@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+  namespace: runner-smoke
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 64Mi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: write
+  namespace: runner-smoke
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 100
+  template:
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      containers:
+        - name: smoke
+          image: busybox:1.37.0
+          imagePullPolicy: Never
+          command: [sh, -ec, "nslookup kubernetes.default.svc.cluster.local; echo durable-runner-value > /data/value"]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 32Mi}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: data}

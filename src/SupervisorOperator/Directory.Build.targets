@@ -1,0 +1,5 @@
+<Project>
+  <ItemGroup>
+    <Compile Include="../SharedRuntime/RuntimeMetrics.cs" Link="RuntimeMetrics.cs" />
+  </ItemGroup>
+</Project>

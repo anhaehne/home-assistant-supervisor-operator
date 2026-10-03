@@ -1,0 +1,6 @@
+**
+!.build/
+!.build/operator/
+!.build/operator/**
+!.build/gateway/
+!.build/gateway/**

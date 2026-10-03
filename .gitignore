@@ -427,3 +427,14 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Project-owned disposable kind credentials, runtime configuration, and lock
+/.dev-state/
+/.dev.lock
+/TestResults/
+/.dev-reference/
+/.build/
+/.test-artifacts/
+/.dev-tools/
+/.dev-suite.lock
+/dev/.smoke/

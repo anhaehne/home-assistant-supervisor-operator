@@ -1,0 +1,24 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: read
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 100
+  template:
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      containers:
+        - name: smoke
+          image: busybox:1.37.0
+          imagePullPolicy: Never
+          command: [sh, -ec, "test \"$(cat /data/value)\" = durable-runner-value"]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 100m, memory: 32Mi}
+          volumeMounts:
+            - {name: data, mountPath: /data, readOnly: true}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: data}

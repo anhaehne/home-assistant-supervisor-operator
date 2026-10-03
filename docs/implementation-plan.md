@@ -1,6 +1,6 @@
 # Home Assistant Supervisor operator: research and implementation plan
 
-Research date: 2026-10-02. Status: proposed design; no operator implementation or runtime compatibility has been validated.
+Research date: 2026-10-02. Implementation update: 2026-10-03. P0 is complete: the stock Core compatibility spike, development image, fresh full suite and success/failure teardown gates passed in isolated kind. HTTP endpoints use ASP.NET Core MVC controllers. Kubernetes reconciliation and later milestones remain planned.
 
 ## Objective and recommendation
 
@@ -87,7 +87,7 @@ API families and legacy routes were checked against [Supervisor route registrati
 
 ## Proposed architecture
 
-Use C# on .NET 10 LTS with ASP.NET Core and run the HTTP API and controllers in the same process, executable, and Deployment. KubeOps is the provisional controller framework, using the official KubernetesClient library; validate it in the compatibility spike before committing to it. Keep HTTP handlers and reconciliation as separate internal modules sharing domain types and business rules. See [the technology stack decision](tech-stack.md) for accepted choices, acceptance criteria, and version pinning. Use one repository with separate gateway and worker executables/images where their dependencies and permissions differ. These are supporting components, not separately deployed API and operator services. A Python helper is an option if exact add-on schema validation proves expensive to reproduce.
+Use C# on .NET 10 LTS with ASP.NET Core and run the HTTP API and controllers in the same process, executable, and Deployment. KubeOps is the provisional controller framework, using the official KubernetesClient library; validate it in the compatibility spike before committing to it. Keep HTTP handlers and reconciliation as separate internal modules sharing domain types and business rules. See [the technology stack decision](tech-stack.md) for accepted choices, acceptance criteria, and version pinning. Use one repository with separate gateway and worker executables/images where their dependencies and permissions differ. These are supporting components, not separately deployed API and operator services. Implement add-on schema validation in C#; revisit additional tooling only if a demonstrated compatibility gap requires it.
 
 ### Component ownership
 
@@ -273,13 +273,15 @@ Each milestone should become a small set of reviewable issues. Dependencies are 
 
 ### Milestone 0 — prove the stock UI contract
 
+Completed 2026-10-03. Native onboarding and existing-config startup, loaded integration, Settings/Apps/store, required client parsing, socket reads, measured statistics, repair visibility, uploads, HTTP migration/trusted proxies and sequential restart persistence passed in the fresh guarded suite. The development image and real success/failure teardown gates passed after the platform corrected Docker's MTU configuration. After converting both HTTP services to MVC controllers, all 70 .NET tests passed without skips and the fresh full suite passed again with successful cleanup. See [development evidence](development.md#coverage-and-evidence) and the [runner profile](../dev/runner-profile.md#durable-mtu-configuration). This completes the compatibility spike, not the later operator release.
+
 Deliver a release-pinned route/model manifest and executable compatibility spike. Boot stock Core with a minimal gateway; implement startup reads, ping, onboarding update response, Core/Supervisor option callbacks, and the private socket connection. Examine bundled frontend calls and the pinned Python client. Record response fixtures from an actual Supervisor where possible, with secrets removed. Classify every route as supported, deferred, or intentionally unavailable.
 
 Gate: fresh onboarding and existing-config startup complete; app store/settings render; socket-backed privileged Core calls succeed; all required models parse through aiohasupervisor; declared installation limitations are visible. If stock UI compatibility fails, resolve it before broad controller implementation. Do not hide failures by reporting HAOS.
 
 ### Milestone 1 — operator foundation and Core lifecycle
 
-Scaffold the isolated local test harness described below, one operator/API application, CRDs, Helm packaging, namespace-scoped RBAC, singleton admission, local socket gateway, singleton Core StatefulSet, Services, Secrets, and retained storage. Implement durable operations, lifecycle intent, typed information endpoints, jobs projection, and basic logs. Add finalizers, operation fencing, health conditions, and GitOps ownership mode.
+Extend the completed P0 isolated test harness, MVC API, socket gateway and singleton Core deployment into a reconciled operator. Validate KubeOps, introduce CRDs, user-installable Helm packaging, namespace-scoped controller RBAC, singleton admission and retained storage ownership. Implement durable operations, lifecycle intent, typed information endpoints, jobs projection, and basic logs. Add finalizers, operation fencing, health conditions, and GitOps ownership mode.
 
 Gate: install from a clean cluster; restart Core from the UI; stop/start through the API; delete a Pod and recover; restart operator mid-operation; retain config on uninstall; API remains reachable when Core is stopped. Reject a second instance configuration or operator installation; verify Core never overlaps during updates, restores, and node-partition recovery.
 
@@ -309,7 +311,7 @@ Gate: publish a compatibility matrix with exact image versions and required prof
 
 ## Local testing inside a container
 
-**The development container must never use the Kubernetes cluster that hosts it.** Test control planes, credentials, workloads, and data must be created locally and disposed of locally. This is a project-owned development setup; it does not deploy the upstream Supervisor or require a Home Assistant installation in the hosting cluster. The commands and files below are implementation deliverables, not working tooling yet.
+**The development container must never use the Kubernetes cluster that hosts it.** Test control planes, credentials, workloads, and data must be created locally and disposed of locally. This is a project-owned setup; it does not deploy upstream Supervisor or require Home Assistant in the hosting cluster. Guarded helpers and the P0 application suite now exist; the later controller/add-on gates below remain planned.
 
 ### Default: a complete one-node kind cluster
 
@@ -317,11 +319,11 @@ Use a full **one-node kind cluster as the primary development and integration en
 
 Choose kind initially because we can pin an upstream Kubernetes node image and use the same reproducible cluster setup locally and in CI. K3s through k3d is a viable future alternative if measurements justify it, but we will maintain one default backend first. K3d also runs its nodes in containers, and K3s has kernel/runtime requirements; changing distributions does not remove the current container's nesting constraints. [k3d documentation](https://k3d.io/stable/), [K3s requirements](https://docs.k3s.io/installation/requirements).
 
-Provide a development image with pinned .NET tooling, kind, kubectl, Helm, the pinned aiohasupervisor client, and browser tooling. Provide a separately defined runner/runtime profile so cluster prerequisites are explicit rather than assumed to come from the development image. Cache dependencies and verified images so offline tests can use preloaded inputs. All API and browser access stays inside the runner or on its loopback interface.
+Provide a development image with pinned .NET tooling, kind, kubectl, Helm, and Playwright for .NET with its browser dependencies. Provide a separately defined runner/runtime profile so cluster prerequisites are explicit rather than assumed to come from the development image. Cache dependencies and verified images so offline tests can use preloaded inputs. All API and browser access stays inside the runner or on its loopback interface.
 
 | Layer | What runs | What it verifies |
 | --- | --- | --- |
-| Fast unit and wire-contract tests | Operator/API modules, fake socket/gateway servers, sanitized fixtures, pinned Python client | Response parsing, authorization, manifest rendering, ingress header/session handling, operation transitions, and retry behavior |
+| Fast unit and wire-contract tests | Operator/API modules, fake socket/gateway servers, sanitized fixtures, C# contract tests | Response parsing, authorization, manifest rendering, ingress header/session handling, operation transitions, and retry behavior |
 | Required cluster integration tests | Actual operator/API, gateway, and workers in the local kind cluster | CRDs, admission, RBAC, reconciliation, real scheduling/readiness, PVC provisioning, service DNS, garbage collection, Jobs, restart recovery, and singleton rejection |
 | Required end-to-end tests | The same kind setup with stock Core, selected add-ons, and browser/client tests | Native UI onboarding, Core/add-on lifecycle, ingress/WebSockets, image updates, and backup/restore |
 
@@ -339,7 +341,7 @@ Define `dev/kind.yaml` for a one-node cluster with a pinned node image, API boun
 
 Plan initially for approximately 4 CPUs, 8 GiB RAM, and 20 GiB writable storage for the complete suite; these are starting estimates to measure during the spike, not established minimums. Run scenarios serially to respect the single-Core requirement and reduce memory consumption. Hardware, multicast, IPv6 LAN discovery, multi-node partitions, and production CSI behavior require separately provisioned test environments; passing one-node kind tests does not establish those capabilities.
 
-**Current container assessment (2026-10-03):** 2 CPUs and 4 GiB RAM; cgroup v2 is present, but cgroups are not writable, user namespaces are disabled, and effective capabilities are empty. Go, kind, and container runtimes are absent; no Docker/containerd socket is present. Full nested-cluster tests cannot run unchanged here. Provision a nesting-capable isolated runner before implementing the cluster integration spike. Unit tests alone must not be reported as complete integration validation; if this container remains unchanged, the full-cluster suite is blocked rather than replaced with envtest. This assessment used local inspection only; no hosting-cluster API was contacted.
+**Updated runner assessment (2026-10-03):** The development container remains limited to 2 CPUs and 4 GiB RAM, with nonwritable cgroups, failed user namespace UID mapping, and empty effective capabilities. A dedicated Docker runtime is now available through `/run/paseo-docker/docker.sock`, mounted from this Pod's temporary volume. Docker reports 8 CPUs and approximately 15 GiB memory visible to its daemon; these figures do not establish reserved resources. An isolated one-node kind v0.33.0 cluster using Kubernetes v1.37.0 successfully passed real Pod scheduling, service DNS, dynamic PVC provisioning, cross-Pod persistence, and Job completion checks. Its API was loopback-only, and cleanup removed the test node container and its data volume. Runtime access required sandbox escalation. Full application compatibility, hosting-network isolation, and full application browser coverage remain unvalidated. Playwright for .NET 1.63.0 passed local launch, rendering, JavaScript, and click smoke tests for Chromium, Firefox, and WebKit; browser execution required sandbox escalation. No hosting-cluster API was contacted. See [the Kubernetes manager handover](kubernetes-manager-handover.md) for recorded results.
 
 ### Enforce isolation before starting tests
 
@@ -355,21 +357,21 @@ The operator inside the nested test cluster still needs its normal Kubernetes RB
 
 ### Planned files, commands, and acceptance gates
 
-Ship a `dev/Dockerfile`, a documented dedicated nested-runtime runner profile, `dev/kind.yaml`, test-state ignores, and guarded `hack/` helpers with these Make targets:
+Ship a `dev/Dockerfile`, a documented dedicated nested-runtime runner profile, `dev/kind.yaml`, test-state ignores, and guarded `hack/` helpers with these direct shell entry points. Make and a standalone Python installation are not development prerequisites; use `dotnet test` for unit and fixture tests and Playwright for .NET for browser tests. The upstream Python client remains a contract reference and runs inside stock Core during end-to-end validation:
 
 | Planned command | Result |
 | --- | --- |
-| `make test` | Run unit and fixture/client contract tests without Kubernetes or a container runtime |
-| `make test-integration` | Verify the local kind cluster identity and run real controller/API/workload tests; require the guarded cluster setup and development release |
-| `make dev-up` | Validate nesting/isolation prerequisites and create only the project-owned kind cluster; fail clearly if unsupported |
-| `make dev-load` | Build/load operator, gateway, and worker images and install the development release into that cluster |
-| `make test-e2e` | Verify cluster identity, run stock Core/add-on/client/browser scenarios, and capture redacted diagnostics |
-| `make dev-down` | Remove the recorded local cluster and disposable data; keep requested failure artifacts |
-| `make test-cluster` | Create a fresh isolated kind cluster, build/load/install the release, run integration and end-to-end suites, collect diagnostics, and clean up on success or failure |
+| `dotnet test` | Run unit and C# fixture contract tests without Kubernetes or a container runtime |
+| `./hack/test-integration.sh` | Verify the local kind cluster identity and run real controller/API/workload tests; require the guarded cluster setup and development release |
+| `./hack/dev-up.sh` | Validate nesting/isolation prerequisites and create only the project-owned kind cluster; fail clearly if unsupported |
+| `./hack/dev-load.sh` | Build/load operator, gateway, and worker images and install the development release into that cluster |
+| `./hack/test-e2e.sh` | Verify cluster identity, run stock Core/add-on/client/browser scenarios, and capture redacted diagnostics |
+| `./hack/dev-down.sh` | Remove the recorded local cluster and disposable data; keep requested failure artifacts |
+| `./hack/test-cluster.sh` | Create a fresh isolated kind cluster, build/load/install the release, run integration and end-to-end suites, collect diagnostics, and clean up on success or failure |
 
-Milestone 0 delivers the development image, isolated runner requirements, guarded kind setup, contract fixtures, and the stock Core compatibility spike in that cluster. Milestone 1 adds real operator/Core lifecycle integration tests and the one-command cluster suite. Subsequent milestones extend the same setup with Mosquitto/File editor, ingress, backup workers, and failure injection. Failed prerequisites must produce actionable diagnostics and must never redirect tests to another cluster.
+Milestone 0 delivers the development image, isolated runner profile, guarded kind setup, pinned contract inventory, stock Core compatibility spike and one-command setup/suite/teardown harness. Milestone 1 extends it with actual operator/Core lifecycle integration tests. Subsequent milestones extend the same setup with Mosquitto/File editor, ingress, backup workers and operation failure injection. Failed prerequisites must produce actionable diagnostics and must never redirect tests to another cluster.
 
-Acceptance: from a nesting-capable container runner with no hosting-cluster credentials or runtime sockets, run `make test-cluster` to perform clean install, UI onboarding, Core stop/start, operator restart mid-operation, add-on lifecycle, and cleanup. Repeat isolation preflight with poisoned ambient configuration and prove it is rejected before any external request. Check real scheduling, PVC binding, DNS resolution, Job completion, RBAC denial, and resource cleanup rather than supplying artificial workload statuses. Assert that no two Core processes overlap during updates/restores; test actual node fencing separately. Export test results, redacted logs/events, and image/version identifiers. UI browser tests and pinned aiohasupervisor client tests are release gates; interruption/retry tests cover independent HTTP and controller retries.
+Acceptance: from a nesting-capable container runner with no hosting-cluster credentials or runtime sockets, run `./hack/test-cluster.sh` to perform clean install, UI onboarding, Core stop/start, operator restart mid-operation, add-on lifecycle, and cleanup. Repeat isolation preflight with poisoned ambient configuration and prove it is rejected before any external request. Check real scheduling, PVC binding, DNS resolution, Job completion, RBAC denial, and resource cleanup rather than supplying artificial workload statuses. Assert that no two Core processes overlap during updates/restores; test actual node fencing separately. Export test results, redacted logs/events, and image/version identifiers. UI browser tests and upstream client parsing exercised through stock Core are release gates; interruption/retry tests cover independent HTTP and controller retries.
 
 ## Immediate backlog
 

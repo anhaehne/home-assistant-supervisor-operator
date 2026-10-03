@@ -2,21 +2,21 @@
 
 Decision date: 2026-10-03.
 
-Status: C#/.NET and the application architecture are accepted. KubeOps is provisional pending a compatibility spike. Exact SDK, package, tool, and image versions will be pinned after that spike. No runtime compatibility has been validated yet.
+Status: C#/.NET and the application architecture are accepted. SDK, dependencies, tools and application images are pinned for the completed P0 stock Core compatibility spike. Development-image checks, the fresh full native client/browser suite and success/failure teardown passed in isolated kind on 2026-10-03. KubeOps remains provisional pending its separate P1 acceptance spike.
 
 ## Selected stack
 
 | Area | Choice | Purpose |
 | --- | --- | --- |
 | Language and runtime | C# on .NET 10 LTS | Shared language for the operator, API, gateway, and workers |
-| Supervisor-compatible API | ASP.NET Core with explicit JSON contracts | Preserve upstream routes, response envelopes, authorization, streaming, and WebSocket behavior |
+| Supervisor-compatible API | ASP.NET Core MVC controllers with explicit JSON contracts | Preserve upstream routes, response envelopes, authorization, streaming, and WebSocket behavior |
 | Kubernetes controllers | KubeOps, provisional | Reconciliation, finalizers, CRD/RBAC generation, and admission webhooks |
 | Kubernetes access | Official KubernetesClient library | Access Kubernetes resources and workload APIs |
 | Durable state | CRDs and Secrets | Persist desired state, operation progress, and credentials |
 | File storage | PVCs | Store repository caches, archives, and workload data |
 | Gateway and workers | Separate C# executables sharing domain libraries | Isolate dependencies, socket access, and permissions |
 | Packaging | Linux containers and Helm | Build and install application components |
-| Testing | xUnit, pinned Python Supervisor-client contract tests, Playwright, and isolated kind | Verify logic, wire compatibility, native UI behavior, and real Kubernetes workloads |
+| Testing | xUnit with C# contract fixtures, Playwright for .NET, and isolated kind | Verify logic, wire compatibility, native UI behavior, and real Kubernetes workloads |
 
 .NET 10 is an LTS release supported through November 14, 2028. Pin the SDK for reproducibility and keep supported patch releases current. [Microsoft support policy](https://dotnet.microsoft.com/en-us/platform/support/policy).
 
@@ -26,7 +26,7 @@ The official Kubernetes C# client supports .NET 10. Select its version together 
 
 ## Application structure
 
-One ASP.NET Core application hosts the Supervisor-compatible API and Kubernetes controllers in the same process and Deployment. Keep transport handlers, domain rules, and reconciliation in separate internal modules sharing domain types. Preserve the implementation plan's singleton installation and namespace-scoped permissions.
+One ASP.NET Core application hosts the Supervisor-compatible API; subsequent milestones add Kubernetes controllers in the same process and Deployment. HTTP endpoints use MVC controllers in both API services. Keep transport handlers, domain rules, and reconciliation in separate internal modules sharing domain types. Preserve the implementation plan's singleton installation and namespace-scoped permissions. See [architecture](architecture.md) for the current implementation.
 
 The Core socket gateway runs as a separate minimal C# executable in a sidecar without Kubernetes workload-management credentials. Workers run as separate C# executables in Kubernetes Jobs with task-specific permissions. Shared libraries hold reusable domain and protocol logic.
 
@@ -51,9 +51,9 @@ Pin the validated KubeOps and KubernetesClient versions, .NET SDK, Kubernetes no
 
 ## Validation and development
 
-Use xUnit for focused unit tests and wire fixtures. Use the pinned baseline Python aiohasupervisor client to verify parsing against the upstream consumer. Python is test tooling; a production helper for exact add-on schema behavior remains an option if compatibility work establishes a need.
+Use xUnit for focused unit tests and C# wire-contract fixtures derived from the pinned upstream contracts. Verify actual upstream client parsing through stock Home Assistant Core in end-to-end tests. Its container supplies its own Python runtime and aiohasupervisor dependency; no standalone Python installation is required in the development image. Use direct shell helpers and `dotnet test` rather than Make. Revisit additional tooling only if a demonstrated compatibility gap requires it.
 
-Use Playwright against stock Home Assistant Core for onboarding and UI workflows. Run controller, storage, DNS, lifecycle, worker, and end-to-end scenarios in the dedicated isolated kind cluster. Unit tests and mocked Kubernetes clients cannot replace those release gates.
+Use Playwright for .NET against stock Home Assistant Core for onboarding and UI workflows. Run controller, storage, DNS, lifecycle, worker, and end-to-end scenarios in the dedicated isolated kind cluster. Unit tests and mocked Kubernetes clients cannot replace those release gates.
 
 Existing runner isolation requirements remain in force: never use the cluster hosting the development container or its runtime sockets. Provision a nesting-capable runner before full-cluster validation.
 

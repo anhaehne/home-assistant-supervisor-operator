@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: core-config
+  namespace: haso-p0
+data:
+  configuration.yaml: |
+    default_config:
+    homeassistant:
+      name: P0 HTTP Migration Test
+      time_zone: UTC
+      country: US
+    # Legacy YAML must be imported once by native Core and retained in storage.
+    http:
+      server_port: 80
+      use_x_forwarded_for: true
+      trusted_proxies:
+        - 127.0.0.1
+    logger:
+      default: warning
+      logs:
+        homeassistant.components.hassio: info

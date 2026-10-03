@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CoreGateway/CoreGateway.csproj" />
+    <Project Path="src/Supervisor.Contracts/Supervisor.Contracts.csproj" />
+    <Project Path="src/SupervisorOperator/SupervisorOperator.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/P0.E2E/P0.E2E.csproj" />
+    <Project Path="tests/SupervisorOperator.Tests/SupervisorOperator.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/DevGuard/DevGuard.csproj" />
+  </Folder>
+</Solution>
