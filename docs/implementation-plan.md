@@ -87,7 +87,7 @@ API families and legacy routes were checked against [Supervisor route registrati
 
 ## Proposed architecture
 
-Use Go with controller-runtime/Kubebuilder and run the HTTP API and controllers in the same process, executable, and Deployment. Keep HTTP handlers and reconciliation as separate internal modules sharing domain types and business rules. This is a proposed choice for Kubernetes integration; verify library and Kubernetes version support when scaffolding. Use one repository with separate gateway and worker executables/images where their dependencies and permissions differ. These are supporting components, not separately deployed API and operator services. A Python helper is an option if exact add-on schema validation proves expensive to reproduce.
+Use C# on .NET 10 LTS with ASP.NET Core and run the HTTP API and controllers in the same process, executable, and Deployment. KubeOps is the provisional controller framework, using the official KubernetesClient library; validate it in the compatibility spike before committing to it. Keep HTTP handlers and reconciliation as separate internal modules sharing domain types and business rules. See [the technology stack decision](tech-stack.md) for accepted choices, acceptance criteria, and version pinning. Use one repository with separate gateway and worker executables/images where their dependencies and permissions differ. These are supporting components, not separately deployed API and operator services. A Python helper is an option if exact add-on schema validation proves expensive to reproduce.
 
 ### Component ownership
 
@@ -119,7 +119,7 @@ flowchart LR
 | Core `hassio` integration | Native Supervisor client, HTTP/WebSocket handlers, discovery consumers, and Core auth endpoints | Compatible responses and callbacks; test against the native integration without modifying Core |
 | Core private Unix socket | Native socket server and Supervisor-user behavior | Socket environment/path and shared volume; restricted gateway client and sidecar |
 | Supervisor-compatible API | Home Assistant-defined routes, payloads, roles, error models, and completion semantics | HTTP server, authorization, validation, read models, and translation into durable operations |
-| Operator controllers | Kubernetes APIs and controller-runtime framework | Reconciliation, singleton enforcement, operation fencing, update/recovery workflows, and resource ownership |
+| Operator controllers | Kubernetes APIs and provisional KubeOps framework | Reconciliation, singleton enforcement, operation fencing, update/recovery workflows, and resource ownership |
 | Durable state and CRDs | Kubernetes custom-resource persistence, Secrets, and status mechanics | All five CRD schemas below, state transitions, retention, and projections into Supervisor models |
 | Add-on applications | Official/community images, entrypoints, manifests, options schemas, assets, and application logic; these are upstream artifacts, not necessarily Home Assistant-maintained code | Catalog ingestion, manifest interpretation, capability checks, configuration files, workload manifests, and lifecycle management |
 | Add-on ingress | Native frontend entry points and upstream add-on web servers; Home Assistant-defined session/proxy contract | Session store, validation, authenticated HTTP/WebSocket proxy, routing, and header handling |
@@ -317,7 +317,7 @@ Use a full **one-node kind cluster as the primary development and integration en
 
 Choose kind initially because we can pin an upstream Kubernetes node image and use the same reproducible cluster setup locally and in CI. K3s through k3d is a viable future alternative if measurements justify it, but we will maintain one default backend first. K3d also runs its nodes in containers, and K3s has kernel/runtime requirements; changing distributions does not remove the current container's nesting constraints. [k3d documentation](https://k3d.io/stable/), [K3s requirements](https://docs.k3s.io/installation/requirements).
 
-Provide a development image with pinned Go tooling, kind, kubectl, Helm, the pinned aiohasupervisor client, and browser tooling. Provide a separately defined runner/runtime profile so cluster prerequisites are explicit rather than assumed to come from the development image. Cache dependencies and verified images so offline tests can use preloaded inputs. All API and browser access stays inside the runner or on its loopback interface.
+Provide a development image with pinned .NET tooling, kind, kubectl, Helm, the pinned aiohasupervisor client, and browser tooling. Provide a separately defined runner/runtime profile so cluster prerequisites are explicit rather than assumed to come from the development image. Cache dependencies and verified images so offline tests can use preloaded inputs. All API and browser access stays inside the runner or on its loopback interface.
 
 | Layer | What runs | What it verifies |
 | --- | --- | --- |
@@ -325,7 +325,7 @@ Provide a development image with pinned Go tooling, kind, kubectl, Helm, the pin
 | Required cluster integration tests | Actual operator/API, gateway, and workers in the local kind cluster | CRDs, admission, RBAC, reconciliation, real scheduling/readiness, PVC provisioning, service DNS, garbage collection, Jobs, restart recovery, and singleton rejection |
 | Required end-to-end tests | The same kind setup with stock Core, selected add-ons, and browser/client tests | Native UI onboarding, Core/add-on lifecycle, ingress/WebSockets, image updates, and backup/restore |
 
-Unit tests remain a fast development check. Envtest may be added for narrowly focused API/controller tests, but it is optional and cannot satisfy the cluster integration gate: it lacks kubelets and built-in controllers. If used, explicitly set `UseExistingCluster=false`, reject `USE_EXISTING_CLUSTER=true`, and construct clients from its locally generated configuration. [Kubebuilder envtest documentation](https://book.kubebuilder.io/reference/envtest).
+Unit tests remain a fast development check. Use xUnit and fake Kubernetes clients for focused application tests, but they cannot satisfy the cluster integration gate. Framework acceptance and controller integration tests must run against the guarded local kind cluster with its explicitly generated configuration. Reject `USE_EXISTING_CLUSTER=true`; never fall back to ambient cluster credentials.
 
 Run only one active Home Assistant installation per test cluster. Updates, restores, and version scenarios replace Core sequentially. The integration suite and end-to-end suite may share a cluster during an interactive session; CI should create fresh disposable state for a complete run.
 
