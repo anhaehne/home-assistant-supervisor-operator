@@ -4,7 +4,7 @@ using Supervisor.Contracts;
 namespace SupervisorOperator;
 
 [ApiController]
-public sealed class InfoController(P0ReadModels models) : SupervisorControllerBase
+public sealed class InfoController(P0ReadModels models, IConfiguration configuration) : SupervisorControllerBase
 {
     [HttpGet("/health/live")]
     public IActionResult Live() => Ok();
@@ -36,6 +36,6 @@ public sealed class InfoController(P0ReadModels models) : SupervisorControllerBa
         version = P0ReadModels.BuildVersion, api_compatibility = "2026.09.3", core_baseline = "2026.9.4",
         installation = "kubernetes", limitations = new[] { P0ReadModels.Limitation },
         statistics_scope = "container cgroup CPU, memory and block IO; Pod network counters",
-        host_disk_scope = "compatibility-state PVC filesystem"
+        host_disk_scope = configuration.GetValue<bool>("Operator:Enabled") ? "operator temporary filesystem" : "compatibility-state PVC filesystem"
     });
 }

@@ -1,10 +1,11 @@
 using System.Runtime.InteropServices;
 using SharedRuntime;
 using Supervisor.Contracts;
+using SupervisorOperator.Lifecycle;
 
 namespace SupervisorOperator;
 
-public sealed class P0ReadModels(IConfiguration configuration, InstanceOptionsStore options, GatewayClient gateway)
+public sealed class P0ReadModels(IConfiguration configuration, InstanceOptionsStore options, GatewayClient gateway, IServiceProvider services)
 {
     public const string BuildVersion = "0.0.0";
     public const string Limitation = "Kubernetes operator preview: add-on installation, backups, host control and updates are unavailable";
@@ -18,9 +19,11 @@ public sealed class P0ReadModels(IConfiguration configuration, InstanceOptionsSt
 
     public async Task<CoreInfo> Core(CancellationToken cancellation)
     {
-        var metadata = await gateway.Read<CoreMetadata>("/core/metadata", cancellation);
+        var lifecycle = services.GetService<CoreLifecycle>();
+        var pod = lifecycle is null ? null : await lifecycle.Pod(cancellation);
+        var address = lifecycle is null ? (await gateway.Read<CoreMetadata>("/core/metadata", cancellation)).IpAddress : pod?.Status?.PodIP ?? "0.0.0.0";
         var current = options.Read();
-        return new(CoreVersion, CoreVersion, false, null, metadata.IpAddress, Arch,
+        return new(CoreVersion, CoreVersion, false, null, address, Arch,
             configuration["Instance:CoreImage"] ?? "ghcr.io/home-assistant/home-assistant:2026.9.4", true,
             current.Port, current.Ssl, false, null, null, false, false);
     }
@@ -46,8 +49,13 @@ public sealed class P0ReadModels(IConfiguration configuration, InstanceOptionsSt
             null, null, null, null, null, null);
     }
 
-    public async Task<NetworkInfo> Network(CancellationToken cancellation) =>
-        new([], (await gateway.Read<CoreMetadata>("/core/metadata", cancellation)).Network, null, false);
+    public async Task<NetworkInfo> Network(CancellationToken cancellation)
+    {
+        var lifecycle = services.GetService<CoreLifecycle>();
+        if (lifecycle is not null && await lifecycle.Pod(cancellation) is null)
+            return new([], new DockerNetwork("", "0.0.0.0", "0.0.0.0", "0.0.0.0"), null, false);
+        return new([], (await gateway.Read<CoreMetadata>("/core/metadata", cancellation)).Network, null, false);
+    }
 
     public async Task<ContainerStats> SupervisorStats(CancellationToken cancellation) =>
         await RuntimeMetrics.SampleCgroup(RuntimeMetrics.OwnCgroup(), cancellation);

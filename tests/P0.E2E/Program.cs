@@ -21,6 +21,7 @@ if (args.Length is < 3 or > 4 || args[0] is not ("fresh" or "existing"))
     throw new ArgumentException("Usage: P0.E2E fresh|existing STATE_DIRECTORY ARTIFACT_DIRECTORY [default|http-migration]");
 var mode = args[0];
 var httpMigration = args.Length == 4 && args[3] == "http-migration";
+var lifecycle = args.Length == 4 && args[3] == "lifecycle";
 var state = Path.GetFullPath(args[1]);
 var artifacts = Path.GetFullPath(args[2]);
 Directory.CreateDirectory(artifacts);
@@ -135,6 +136,17 @@ try
     Require(catalog.GetProperty("addons").GetArrayLength() == 0, "P0 must not advertise installable add-ons");
     await page.ScreenshotAsync(new() { Path = Path.Combine(artifacts, mode + "-store.png"), FullPage = true });
     Require(failures.Count == 0, "Browser JavaScript errors: " + string.Join("; ", failures));
+    if (lifecycle)
+    {
+        await page.GotoAsync("http://127.0.0.1:18123/config/system");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Restart Home Assistant", Exact = true }).ClickAsync();
+        await page.GetByText("Interrupts all running automations and scripts.", new() { Exact = true }).ClickAsync();
+        await page.ScreenshotAsync(new() { Path = Path.Combine(artifacts, "p1-restart-dialog.png"), FullPage = true });
+        await page.GetByRole(AriaRole.Button, new() { Name = "Restart", Exact = true }).ClickAsync();
+        await page.WaitForFunctionAsync("() => !document.querySelector('home-assistant')?.hass?.connection?.connected", null,
+            new() { Timeout = 120_000 });
+        Console.WriteLine("Native frontend restart button reached the installed lifecycle operator.");
+    }
     File.WriteAllText(Path.Combine(artifacts, mode + "-result.json"), JsonSerializer.Serialize(new
     {
         mode, passed = true, core = "2026.9.4", integration = "loaded", http_migration = httpMigration,

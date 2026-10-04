@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Service
+metadata: {name: supervisor}
+spec:
+  selector: {app: supervisor}
+  ports: [{port: 80, targetPort: http}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: core}
+spec:
+  selector: {app: core}
+  ports: [{port: 80, targetPort: core-http}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: core-gateway}
+spec:
+  publishNotReadyAddresses: true
+  selector: {app: core}
+  ports: [{port: 8081, targetPort: gateway-http}]
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: home-assistant}
+spec:
+  ingressClassName: {{ required "ingress.className is required" .Values.ingress.className | quote }}
+  tls:
+    - hosts: [{{ required "ingress.host is required" .Values.ingress.host | quote }}]
+      secretName: {{ required "ingress.tlsSecretName is required" .Values.ingress.tlsSecretName | quote }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: core, port: {number: 80}}
+{{- end }}

@@ -1,0 +1,79 @@
+# Fixed cluster-scoped names deliberately reject a second Helm installation.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: haso-singleton
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [ha-operator.io]
+        apiVersions: ['*']
+        operations: [CREATE, UPDATE]
+        resources: [homeassistantinstances]
+  validations:
+    - expression: "object.metadata.name == 'home-assistant' && object.metadata.namespace == '{{ .Release.Namespace }}'"
+      message: Only home-assistant in the designated installation namespace is allowed.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: haso-singleton
+spec:
+  policyName: haso-singleton
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: haso-workloads
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [apps]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [deployments, statefulsets]
+  matchConditions:
+    - name: installation-workloads
+      expression: "request.userInfo.username == 'system:serviceaccount:{{ .Release.Namespace }}:supervisor' || (object.metadata.namespace == '{{ .Release.Namespace }}' && object.metadata.name in ['core', 'supervisor']) || (has(object.metadata.labels) && 'app.kubernetes.io/part-of' in object.metadata.labels && object.metadata.labels['app.kubernetes.io/part-of'] == 'home-assistant-supervisor-operator')"
+  validations:
+    - expression: "object.metadata.namespace == '{{ .Release.Namespace }}' && object.spec.replicas <= 1 && ((object.kind == 'Deployment' && object.metadata.name == 'supervisor' && object.spec.strategy.type == 'Recreate') || (object.kind == 'StatefulSet' && object.metadata.name == 'core' && object.spec.updateStrategy.type == 'OnDelete'))"
+      message: The installation permits only its designated singleton workloads.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: haso-workloads
+spec:
+  policyName: haso-workloads
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: haso-scale
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [apps]
+        apiVersions: [v1]
+        operations: [UPDATE]
+        resources: [deployments/scale, statefulsets/scale]
+  matchConditions:
+    - name: designated-scale
+      expression: "object.metadata.namespace == '{{ .Release.Namespace }}' && object.metadata.name in ['core', 'supervisor']"
+  validations:
+    # ScaleSpec serializes zero with omitempty; absence represents scale-to-zero.
+    - expression: "!has(object.spec.replicas) || object.spec.replicas <= 1"
+      message: The designated singleton cannot be scaled beyond one replica.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: haso-scale
+spec:
+  policyName: haso-scale
+  validationActions: [Deny]

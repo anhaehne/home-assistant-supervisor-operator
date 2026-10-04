@@ -31,9 +31,6 @@ public sealed class CapabilitiesController : SupervisorControllerBase
     [HttpGet("/backups/info")]
     public IActionResult BackupInfo() => ApiOk(new { backups = Array.Empty<object>(), days_until_stale = 30 });
 
-    [HttpGet("/jobs/info")]
-    public IActionResult Jobs() => ApiOk(new JobsInfo([], []));
-
     [HttpGet("/mounts")]
     public IActionResult Mounts() => ApiOk(new MountsInfo(null, []));
 

@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: instance-data
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- if .Values.storageClassName }}
+  storageClassName: {{ .Values.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests: {storage: {{ .Values.storageSize }}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: core-config
+data:
+  configuration.yaml: |
+    default_config:
+    homeassistant:
+      name: Home Assistant
+      time_zone: UTC
+      country: US
+    logger:
+      default: warning
+      logs:
+        homeassistant.components.hassio: info

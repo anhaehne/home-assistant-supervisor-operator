@@ -12,7 +12,7 @@ For a new runner, the platform owner must provide:
 | Runtime | Dedicated daemon and data directory; socket at the path above; no node runtime mounts; daemon lifecycle tied to the runner |
 | Credentials | `automountServiceAccountToken: false`; no hosting kubeconfigs or cloud credentials |
 | Nesting | Prefer rootless only after user namespaces, cgroup v2 delegation and networking are demonstrated; otherwise explicitly provision the dedicated daemon's nesting privileges |
-| Resources | Initially reserve 4 CPUs, 8 GiB RAM and 20 GiB disposable runtime storage; retain extra space for image/browser caches; measure and adjust |
+| Resources | Initial CPU/memory estimates are 4 CPUs and 8 GiB RAM; dedicated Docker now has a 200 GiB persistent PVC. The two-node suite with development-image caches measured 21 GB used after loading; the former 20 GiB emptyDir was insufficient. Monitor usage and cache growth |
 | Network | Loopback API/UI access; deny hosting API/node management/cloud metadata routes, including IPv6 where enabled; permit required DNS and dependency/image downloads |
 | MTU | Set the daemon's default bridge MTU and new bridge-network MTU no greater than the outer runner interface; this runner needs 1450 |
 | Storage | Project files retained separately; kind nodes, Core PVCs, operator spike state and credentials disposable; verified image caches may remain |
@@ -40,3 +40,9 @@ For provisioning or repair, the platform owner must merge these settings into th
 ```
 
 After provisioning or repair, run a fresh guarded cluster, build/validate the development image, verify injected-failure teardown, and run the complete suite. Daemon configuration belongs to the platform; repository helpers verify it on each run.
+
+## Persistent dedicated-runtime storage
+
+On 2026-10-04, the platform owner confirmed the two runner interruptions were kubelet evictions after Docker exceeded its former 20 GiB emptyDir limit. Dedicated Docker storage now uses the 200 GiB ReadWriteOnce Longhorn PVC `paseo-docker-data`, mounted at `/var/lib/docker`, with three healthy replicas. See the [platform resolution](../docs/kubernetes-manager-handover.md#platform-resolution-persistent-docker-storage). This preserves Docker data across outer Pod replacement, but does not preserve running test or agent processes.
+
+Check usage with `docker --host unix:///run/paseo-docker/docker.sock system df`. The full suite removes only its sealed project nodes and recorded data volumes; verified image caches may remain. Never prune unrelated containers, volumes or images to recover space. Use the runtime recovery helper before resuming retained nodes or starting a fresh suite after an interruption.

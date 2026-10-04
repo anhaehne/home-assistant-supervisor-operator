@@ -30,7 +30,8 @@ async def main():
         assert not (await client.network.info()).interfaces
         assert not await client.ingress.panels()
         assert not (await client.mounts.info()).mounts
-        assert not (await client.jobs.info()).jobs
+        jobs = (await client.jobs.info()).jobs
+        assert len(jobs) <= 20 and all(job.uuid for job in jobs)
         assert not await client.addons.list()
         assert (await client.resolution.info()).unsupported
         assert (await client.supervisor.stats()).memory_usage > 0

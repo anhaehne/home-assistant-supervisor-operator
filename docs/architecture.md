@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the implemented P0 compatibility spike. The [implementation plan](implementation-plan.md) defines subsequent milestones, and the [technology decision](tech-stack.md) records the accepted C#/.NET stack. P0 proves stock Home Assistant Core and frontend compatibility in an isolated kind cluster. Kubernetes reconciliation, CRDs, Helm packaging and add-on lifecycle remain later work.
+This document describes the P0 compatibility spike and implemented [P1 Core lifecycle foundation](p1-foundation.md). The [implementation plan](implementation-plan.md) defines subsequent milestones, and the [technology decision](tech-stack.md) records the accepted C#/.NET stack. P1 adds namespace-scoped reconciliation, durable operations, admission and Helm packaging; its fresh full acceptance suite passed on 2026-10-04. Add-on lifecycle remains later work.
 
 ## Components and request flow
 
@@ -10,8 +10,13 @@ flowchart LR
     Core -->|Supervisor API HTTP + Core credential| API[SupervisorOperator MVC controllers]
     API --> Models[P0ReadModels]
     API --> Options[InstanceOptionsStore]
-    Options --> State[(Compatibility-state PVC)]
-    Core --> Config[(Core config PVC)]
+    API --> Intent[(Instance and operation CRDs)]
+    API -. same process .-> Controller[KubeOps lifecycle controller and finalizer]
+    Controller --> Intent
+    Controller -->|UID and generation fenced writes| Workload[Singleton Core StatefulSet]
+    Workload --> Core
+    Options --> Intent
+    Core --> Config[(Independently retained instance PVC)]
     API -->|Fixed reads + gateway credential| Gateway[CoreGateway MVC controller]
     Gateway -->|Private Unix socket| Core
     API -->|Explicit namespace-scoped pods/exec| Metrics[Core cgroup and Pod counters]
@@ -27,6 +32,9 @@ Core runs its released image and native entrypoint, loading its built-in `hassio
 | --- | --- |
 | `src/Supervisor.Contracts` | Explicit upstream wire DTOs and success/error envelopes |
 | `src/SupervisorOperator` | API controllers, credential/error middleware, read models, option persistence and Core metrics |
+| `src/SupervisorOperator/Foundation` | Opt-in namespace-scoped KubeOps probe, durable acceptance status and owned projection cleanup |
+| `src/SupervisorOperator/Lifecycle` | Instance/operation entities, lifecycle acceptance, reconciliation, health, fencing and shutdown |
+| `charts/home-assistant-supervisor-operator` | P1 chart, structural CRDs, RBAC, singleton admission and retained storage |
 | `src/CoreGateway` | Authenticated, narrowly scoped access to Core's private socket |
 | `src/SharedRuntime` | Shared measured cgroup and network-counter helpers |
 | `deploy/p0.yaml` | P0 singleton workloads, Services, PVCs, credentials references and namespace-scoped RBAC |
@@ -44,9 +52,11 @@ The [contract baseline](contract-baseline.md) records pinned upstream routes, cl
 
 ## State and lifecycle
 
-`InstanceOptionsStore` stores the spike's timezone, country, diagnostics and Core HTTP option callbacks. Updates serialize under a semaphore and write through a temporary file before atomic replacement. The API's PVC survives its restart. Core has a separate configuration PVC for native users, settings and storage. Tests replace Core sequentially; they never start overlapping installations.
+In the installed P1 operator, `InstanceOptionsStore` uses resourceVersion-checked instance CR writes for timezone, country, diagnostics and Core HTTP callbacks. GitOps ownership rejects UI changes while permitting unchanged bootstrap callbacks. P0 and local API fixtures retain the atomic file store. Core's native configuration belongs to Core/the user on the retained instance PVC.
 
-The P0 manifests declare one Supervisor API Deployment and one Core StatefulSet with a gateway sidecar. Core uses `OnDelete` updates; the API uses `Recreate`. The gateway Service publishes not-ready addresses so startup reads can reach metadata without a readiness cycle. Later milestones add reconciled desired state, durable operations and recovery. The current option store is a compatibility-spike mechanism, not implemented CRD ownership or general Core lifecycle control.
+P1's combined API/operator Deployment uses `Recreate`; its controller owns one `OnDelete` Core StatefulSet with a gateway sidecar. Admission enforces the singleton across instance configurations, installations and scaling. API commands commit to the CR before HTTP waiting; operations recover after process interruption. Restart waits for the old Pod to disappear before starting Core, then verifies readiness and native socket application health. All workload writes carry instance UID, monotonic generation and resourceVersion fencing. Unreachable Pods block replacement; selected-node placement is immutable. Template upgrades stop Core before recreating immutable workloads. The gateway Service publishes not-ready addresses to avoid a startup readiness cycle.
+
+Jobs project bounded durable operation records; basic logs use fixed current Pod/container targets. The Core PVC has no CR owner reference and is kept by Helm. Finalization and the chart's pre-delete shutdown hook wait for graceful termination while retaining configuration. No controller force-deletes Pods or moves data to another node. Physical fencing remains an administrator responsibility.
 
 ## Credentials and isolation
 
@@ -54,7 +64,7 @@ Core's credential authenticates the Supervisor API, with the native header prece
 
 The API runs non-root. The gateway runs as root because stock Core's Unix socket is root-owned with mode 0600; it drops all capabilities, uses a read-only root filesystem and has no Kubernetes service-account credentials. The Core workload also disables service-account token mounting.
 
-Core metrics use a fixed read-only exec command against `core-0` in the installed namespace. Only the installed API workload explicitly opts into in-cluster credentials, using its downward-API namespace and narrow RBAC. Local API runs cannot select ambient hosting-cluster credentials. Statistics represent actual container/Pod counters; host disk values describe the compatibility-state filesystem. Unobserved node and HAOS metadata remain null, and the installation reports unsupported status with visible limitations.
+Core metrics use a fixed read-only exec command against `core-0` in the installed namespace. Only the installed API workload explicitly opts into in-cluster credentials, using its downward-API namespace and narrow RBAC. Local API runs cannot select ambient hosting-cluster credentials. Statistics represent actual container/Pod counters; host disk values describe the operator filesystem (the P0 compatibility-state filesystem or P1 temporary storage), not Core PVC capacity. Unobserved node and HAOS metadata remain null, and the installation reports unsupported status with visible limitations.
 
 Project tests use only the dedicated nested Docker daemon and a verified project-owned kind cluster. DevGuard seals daemon/node identity and generated kubeconfig, rejects ambient credentials and remote runtime inputs, and checks bridge MTU against the runner interface. These configuration guards do not establish platform firewall enforcement or production hardware/LAN support.
 
@@ -62,7 +72,7 @@ Project tests use only the dedicated nested Docker daemon and a verified project
 
 The fresh suite owns setup, image loading, real scheduling/DNS/PVC Jobs, inventory comparison, RBAC/client checks, browser scenarios, diagnostics and teardown. Browser scenarios exercise native onboarding, existing-account startup, Settings/Apps/store, repairs, uploads, proxy behavior, restart persistence and HTTP migration. A separate injected-failure gate checks real cleanup. See [development](development.md) for commands and actual results.
 
-P0 does not provide add-on installation, backups, updates, ingress, hardware management, CRDs or Kubernetes reconcilers. KubeOps acceptance remains a P1 requirement; the HTTP controllers introduced here are ASP.NET Core transport controllers.
+P1 does not provide add-on installation, backups, updates, authenticated add-on ingress or hardware management. Its disposable framework probe remains a separate development fixture. P1 gates include real lifecycle/UI checks, watch reconnect, schema defaults, immutable upgrades and a live Core worker partition with physical fencing. These kind checks do not establish production CSI, LAN, device or multi-architecture compatibility.
 
 ## Deployment and P0 closeout
 
@@ -70,4 +80,4 @@ The supported P0 deployment path is the guarded development runner: `dev-up.sh` 
 
 P0 closes with MVC controller-based HTTP services, the pinned compatibility inventory, architecture/contribution documentation and green native client/browser tests. The [development evidence](development.md#coverage-and-evidence) records 70 passing .NET tests, the fresh full E2E run, development-image checks and verified success/failure teardown.
 
-P1 must validate KubeOps, introduce CRDs and namespace-scoped reconciliation, implement durable Core lifecycle operations and singleton admission, and provide Helm packaging with install/uninstall and retained-config checks. There is currently no Helm chart, application image release pipeline or ingress/TLS installation configuration. Later milestones add add-on lifecycle, ingress, backups and updates; closing P0 does not deliver those features.
+The P1 chart accepts administrator-supplied application image references, credentials, selected node and storage. Optional frontend ingress/TLS assumes an existing ingress controller and native Core trusted-proxy configuration. Application images and chart releases are not published. See [installation, ownership and upgrade instructions](p1-foundation.md#installing-the-development-preview). Later milestones add add-on lifecycle, ingress authentication, backups and updates.

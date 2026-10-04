@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supervisor
+  labels: {app.kubernetes.io/part-of: home-assistant-supervisor-operator}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: supervisor}
+  template:
+    metadata:
+      labels: {app: supervisor}
+      annotations:
+        ha-operator.io/build-id: {{ .Values.operatorBuildId | default .Values.operatorImage | quote }}
+    spec:
+      {{- if .Values.operatorNode }}
+      nodeSelector: {kubernetes.io/hostname: {{ .Values.operatorNode | quote }}}
+      {{- end }}
+      {{- with .Values.operatorTolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: supervisor
+      automountServiceAccountToken: true
+      securityContext: {runAsUser: 1654, runAsGroup: 1654, fsGroup: 1654}
+      containers:
+        - name: supervisor
+          image: {{ required "operatorImage must identify your operator build" .Values.operatorImage | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports: [{name: http, containerPort: 8080}]
+          env:
+            - name: Supervisor__CoreToken
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.credentialsSecret }}, key: core-token}
+            - name: Gateway__Token
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.credentialsSecret }}, key: gateway-token}
+            - {name: Gateway__BaseUrl, value: 'http://core-gateway:8081'}
+            - {name: Instance__CoreVersion, value: 2026.9.4}
+            - {name: Instance__CoreImage, value: {{ .Values.coreImage | quote }}}
+            - {name: Operator__Enabled, value: 'true'}
+            - {name: Kubernetes__UseInClusterCredentials, value: 'true'}
+            - name: Kubernetes__Namespace
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+            - name: Instance__NodeName
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - name: Instance__PodIp
+              valueFrom: {fieldRef: {fieldPath: status.podIP}}
+            - name: Instance__OperatorPodName
+              valueFrom: {fieldRef: {fieldPath: metadata.name}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: '1', memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          readinessProbe:
+            httpGet: {path: /health/live, port: http}
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+          volumeMounts: [{name: temp, mountPath: /tmp}]
+      volumes: [{name: temp, emptyDir: {}}]

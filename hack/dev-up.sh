@@ -17,6 +17,7 @@ if ! local_tool kind create cluster --name "$name" --config "$DEV_ROOT/dev/kind.
     fail 'Cluster creation failed. State is retained for diagnosis; fix the setup, then use ./hack/dev-down.sh to remove only this cluster.'
 fi
 local_tool docker --host "$DEV_ENDPOINT" inspect "$name-control-plane" | guard seal-node "$DEV_IDENTITY"
+local_tool docker --host "$DEV_ENDPOINT" inspect "$name-worker" | guard seal-worker "$DEV_IDENTITY"
 config_json | guard seal-config "$DEV_IDENTITY" "$DEV_KUBECONFIG"
 check_network
 kctl wait --for=condition=Ready node --all --timeout=120s

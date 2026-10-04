@@ -2,7 +2,7 @@
 
 Decision date: 2026-10-03.
 
-Status: C#/.NET and the application architecture are accepted. SDK, dependencies, tools and application images are pinned for the completed P0 stock Core compatibility spike. Development-image checks, the fresh full native client/browser suite and success/failure teardown passed in isolated kind on 2026-10-03. KubeOps remains provisional pending its separate P1 acceptance spike.
+Status: C#/.NET and the application architecture are accepted. SDK, dependencies, tools and application images are pinned for the completed P0 stock Core compatibility spike. Development-image checks, the fresh full native client/browser suite and success/failure teardown passed in isolated kind on 2026-10-03. KubeOps.Operator 13.3.1 with KubernetesClient 19.0.2 passed P1 acceptance on 2026-10-04, including lifecycle, admission, fencing, finalizers, conflict handling, watch/restart recovery and prolonged API-read/dependency outages in Kubernetes 1.37.0.
 
 ## Selected stack
 
@@ -10,7 +10,7 @@ Status: C#/.NET and the application architecture are accepted. SDK, dependencies
 | --- | --- | --- |
 | Language and runtime | C# on .NET 10 LTS | Shared language for the operator, API, gateway, and workers |
 | Supervisor-compatible API | ASP.NET Core MVC controllers with explicit JSON contracts | Preserve upstream routes, response envelopes, authorization, streaming, and WebSocket behavior |
-| Kubernetes controllers | KubeOps, provisional | Reconciliation, finalizers, CRD/RBAC generation, and admission webhooks |
+| Kubernetes controllers | KubeOps.Operator 13.3.1, validated for P1 | Reconciliation, finalizers, CRD/RBAC generation, and admission webhooks |
 | Kubernetes access | Official KubernetesClient library | Access Kubernetes resources and workload APIs |
 | Durable state | CRDs and Secrets | Persist desired state, operation progress, and credentials |
 | File storage | PVCs | Store repository caches, archives, and workload data |
@@ -20,13 +20,13 @@ Status: C#/.NET and the application architecture are accepted. SDK, dependencies
 
 .NET 10 is an LTS release supported through November 14, 2028. Pin the SDK for reproducibility and keep supported patch releases current. [Microsoft support policy](https://dotnet.microsoft.com/en-us/platform/support/policy).
 
-KubeOps provides reconciliation, finalizers, CRD/RBAC generation, and ASP.NET Core admission webhooks. Validate its suitability through the spike below. [KubeOps project](https://github.com/dotnet/dotnet-operator-sdk).
+KubeOps provides reconciliation, finalizers, CRD/RBAC generation, and ASP.NET Core admission webhooks. The acceptance checks below passed for the implemented P1 architecture. [KubeOps project](https://github.com/dotnet/dotnet-operator-sdk).
 
 The official Kubernetes C# client supports .NET 10. Select its version together with KubeOps and the tested Kubernetes versions. [Client compatibility matrix](https://github.com/kubernetes-client/csharp).
 
 ## Application structure
 
-One ASP.NET Core application hosts the Supervisor-compatible API; subsequent milestones add Kubernetes controllers in the same process and Deployment. HTTP endpoints use MVC controllers in both API services. Keep transport handlers, domain rules, and reconciliation in separate internal modules sharing domain types. Preserve the implementation plan's singleton installation and namespace-scoped permissions. See [architecture](architecture.md) for the current implementation.
+One ASP.NET Core application hosts the Supervisor-compatible API and Kubernetes controllers in the same process and Deployment. HTTP endpoints use MVC controllers in both API services. Keep transport handlers, domain rules, and reconciliation in separate internal modules sharing domain types. Preserve the implementation plan's singleton installation and namespace-scoped permissions. See [architecture](architecture.md) for the current implementation.
 
 The Core socket gateway runs as a separate minimal C# executable in a sidecar without Kubernetes workload-management credentials. Workers run as separate C# executables in Kubernetes Jobs with task-specific permissions. Shared libraries hold reusable domain and protocol logic.
 
@@ -38,7 +38,9 @@ CRDs and Secrets hold durable intent, operation state, and credentials. Store la
 
 ## KubeOps acceptance spike
 
-Before committing to KubeOps, demonstrate these requirements in the isolated kind environment:
+The [P1 foundation spike](p1-foundation.md) pins KubeOps.Operator 13.3.1 with KubernetesClient 19.0.2 and implements namespace-scoped Core reconciliation/finalizers in the combined API process. Fresh full acceptance passed in `.test-artifacts/p0.zEExGB/`, including all six requirements below. This validates the development preview on Kubernetes 1.37.0; production CSI, LAN/hardware profiles and other Kubernetes versions remain unvalidated.
+
+The isolated kind acceptance suite demonstrated these requirements:
 
 1. Namespace-scoped watches and permissions, including denial outside the installation namespace.
 2. Structural CRD schemas, status subresources, status updates, and conflict handling.

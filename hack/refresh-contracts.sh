@@ -16,8 +16,10 @@ fetch https://raw.githubusercontent.com/home-assistant/supervisor/2026.09.3/supe
 fetch https://raw.githubusercontent.com/home-assistant/core/2026.9.4/homeassistant/components/hassio/__init__.py b38b7964badb6f4df26682d25c0859074ebf47acdcb8750d940459a055acba84 "$inputs/core/__init__.py"
 fetch https://raw.githubusercontent.com/home-assistant/core/2026.9.4/homeassistant/components/hassio/coordinator.py deb06b6b4186764405e05806266ceb1dcf67a82c3dd559ccda94df8f2c3ac2ec "$inputs/core/coordinator.py"
 output="$DEV_STATE/baseline.generated.json"
+namespace=${HASO_TEST_NAMESPACE:-haso-p0}
+[[ "$namespace" == haso-p0 || "$namespace" == haso-p1 ]] || fail 'Contract inventory runs only in the guarded test installation namespaces.'
 tar -C "$inputs" -cf - supervisor/__init__.py core/__init__.py core/coordinator.py | \
-    kctl -n haso-p0 exec -i core-0 -c core -- python -c "$(cat "$DEV_ROOT/tests/P0.E2E/contract_inventory.py")" > "$output"
+    kctl -n "$namespace" exec -i core-0 -c core -- python -c "$(cat "$DEV_ROOT/tests/P0.E2E/contract_inventory.py")" > "$output"
 if [[ "$mode" == --write ]]; then
     cp "$output" "$DEV_ROOT/contracts/baseline.json"
 else

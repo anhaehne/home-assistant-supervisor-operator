@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: core-workload
+data:
+  core.yaml: |
+    apiVersion: apps/v1
+    kind: StatefulSet
+    metadata:
+      name: core
+      labels: {app.kubernetes.io/part-of: home-assistant-supervisor-operator}
+    spec:
+      replicas: 0
+      serviceName: core
+      updateStrategy: {type: OnDelete}
+      selector:
+        matchLabels: {app: core}
+      template:
+        metadata:
+          labels: {app: core}
+        spec:
+          automountServiceAccountToken: false
+          terminationGracePeriodSeconds: 60
+          initContainers:
+            - name: initialize-config
+              image: {{ .Values.coreImage | quote }}
+              imagePullPolicy: {{ .Values.imagePullPolicy }}
+              command: [sh, -ec]
+              args:
+                - |
+                  mkdir -p /instance/config /instance/share /instance/media /instance/ssl /instance/addon_configs /instance/addon_data
+                  if [ ! -e /instance/config/configuration.yaml ]; then
+                    cp /initial/configuration.yaml /instance/config/configuration.yaml
+                  fi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: data, mountPath: /instance}
+                - {name: initial, mountPath: /initial, readOnly: true}
+          containers:
+            - name: core
+              image: {{ .Values.coreImage | quote }}
+              imagePullPolicy: {{ .Values.imagePullPolicy }}
+              ports: [{name: core-http, containerPort: 80}]
+              env:
+                - {name: SUPERVISOR, value: supervisor}
+                - name: SUPERVISOR_TOKEN
+                  valueFrom:
+                    secretKeyRef: {name: {{ .Values.credentialsSecret }}, key: core-token}
+                - {name: SUPERVISOR_CORE_API_SOCKET, value: /run/supervisor/core.sock}
+              resources:
+                requests: {cpu: 500m, memory: 512Mi}
+                limits: {cpu: '2', memory: 2Gi}
+              startupProbe:
+                httpGet: {path: /, port: core-http}
+                failureThreshold: 120
+                periodSeconds: 5
+              readinessProbe:
+                httpGet: {path: /, port: core-http}
+                periodSeconds: 5
+              volumeMounts:
+                - {name: data, mountPath: /config, subPath: config}
+                - {name: socket, mountPath: /run/supervisor}
+            - name: gateway
+              image: {{ required "gatewayImage must identify your gateway build" .Values.gatewayImage | quote }}
+              imagePullPolicy: {{ .Values.imagePullPolicy }}
+              ports: [{name: gateway-http, containerPort: 8081}]
+              env:
+                - name: Gateway__Token
+                  valueFrom:
+                    secretKeyRef: {name: {{ .Values.credentialsSecret }}, key: gateway-token}
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {cpu: 500m, memory: 256Mi}
+              securityContext:
+                runAsUser: 0
+                runAsGroup: 0
+                runAsNonRoot: false
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              readinessProbe:
+                httpGet: {path: /health/live, port: gateway-http}
+              volumeMounts:
+                - {name: socket, mountPath: /run/supervisor, readOnly: true}
+                - {name: temp, mountPath: /tmp}
+          volumes:
+            - {name: data, persistentVolumeClaim: {claimName: instance-data}}
+            - {name: initial, configMap: {name: core-config}}
+            - {name: socket, emptyDir: {}}
+            - {name: temp, emptyDir: {}}

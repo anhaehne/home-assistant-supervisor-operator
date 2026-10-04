@@ -37,6 +37,10 @@ public static class SupervisorApi
             try { await next(context); }
             catch (JsonException) { await Error("Invalid json").ExecuteAsync(context); }
             catch (ApiValidationException exception) { await Error(exception.Message).ExecuteAsync(context); }
+            catch (k8s.Autorest.HttpOperationException)
+            {
+                await Results.Json(new ApiError("The installed Kubernetes adapter is unavailable"), statusCode: 503).ExecuteAsync(context);
+            }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !context.RequestAborted.IsCancellationRequested)
             {
                 await Results.Json(new ApiError("Core gateway is unavailable"), statusCode: 503).ExecuteAsync(context);

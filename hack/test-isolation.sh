@@ -40,4 +40,36 @@ if rg -q 'KUBERNETES_|AWS_|GOOGLE_|KUBECONFIG=' "$temporary/environment"; then
     printf '%s\n' 'FAIL: ambient credentials or discovery escaped sanitization.' >&2
     exit 1
 fi
+# Bash suppresses errexit transitively for conditional function calls. A failed
+# prerequisite must still prevent later validation and API/runtime actions.
+bash -s -- "$root" "$temporary" <<'SH'
+source "$1/hack/lib/dev.sh"
+DEV_IDENTITY="$2/mock-identity"
+DEV_KUBECONFIG="$2/mock-kubeconfig"
+touch "$DEV_IDENTITY" "$DEV_KUBECONFIG"
+runtime_id() { printf '%s\n' daemon; }
+local_tool() { printf '%s\n' '{}'; }
+config_json() { printf '%s\n' '{}'; }
+guard() {
+    case "$1" in
+        name) printf '%s\n' sealed ;;
+        has-worker) printf '%s\n' true ;;
+        node|worker|network-mtu) [[ "$1" != "$failed_guard" ]] ;;
+        config) touch "$2.config-contacted" ;;
+        runtime) [[ "$failed_guard" != network-mtu ]] ;;
+        recover-runtime) touch "$2.rebound"; printf '%s\n' retained ;;
+    esac
+}
+for failed_guard in node worker network-mtu; do
+    if check_cluster; then
+        printf 'FAIL: conditional cluster guard accepted failed %s validation.\n' "$failed_guard" >&2
+        exit 1
+    fi
+    [[ ! -e "$DEV_IDENTITY.config-contacted" && ! -e "$DEV_IDENTITY.rebound" ]] || exit 1
+    if kctl get pods; then
+        printf '%s\n' 'FAIL: kubectl ignored the failed cluster guard.' >&2
+        exit 1
+    fi
+done
+SH
 printf '%s\n' 'Isolation regression checks passed; poisoned inputs made no runtime or Kubernetes requests.'

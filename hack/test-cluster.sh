@@ -8,6 +8,7 @@ exec 9>&-
 root=$(cd -- "$(dirname -- "$0")/.." && pwd -P)
 exec 8>"$root/.dev-suite.lock"
 flock -x 8
+"$root/hack/recover-runtime.sh" 8>&-
 # No child helper inherits the orchestration lock. Each independently guards
 # its own runtime/cluster access and shares the separate development lock.
 mkdir -p "$root/.test-artifacts"
@@ -34,7 +35,7 @@ cleanup() {
         result=1
     fi
     printf '{"exit_code":%s,"teardown_complete":%s}\n' "$result" "$([[ ! -e "$root/.dev-state" ]] && echo true || echo false)" > "$artifacts/suite-result.json"
-    printf 'P0 suite exit code: %s. Artifacts: %s\n' "$result" "$artifacts"
+    printf 'P0/P1 suite exit code: %s. Artifacts: %s\n' "$result" "$artifacts"
     exit "$result"
 }
 trap cleanup EXIT
@@ -54,5 +55,7 @@ fi
 "$root/hack/test-runner.sh" 8>&-
 "$root/hack/refresh-contracts.sh" --check 8>&-
 "$root/hack/test-integration.sh" 8>&- | tee "$artifacts/integration.log"
+"$root/hack/test-framework.sh" 8>&- | tee "$artifacts/framework.log"
 "$root/hack/test-e2e.sh" "$artifacts" 8>&- | tee "$artifacts/e2e.log"
-printf '%s\n' 'All P0 suite gates passed.'
+"$root/hack/test-p1.sh" "$artifacts" 8>&- | tee "$artifacts/p1.log"
+printf '%s\n' 'All P0/P1 suite gates passed.'

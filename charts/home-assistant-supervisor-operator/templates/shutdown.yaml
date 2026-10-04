@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata: {name: supervisor-shutdown}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata: {name: supervisor-shutdown}
+rules:
+  - apiGroups: [ha-operator.io]
+    resources: [homeassistantinstances]
+    resourceNames: [home-assistant]
+    verbs: [get, update, delete]
+  - apiGroups: ['']
+    resources: [pods]
+    resourceNames: [core-0]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata: {name: supervisor-shutdown}
+subjects:
+  - {kind: ServiceAccount, name: supervisor-shutdown, namespace: {{ .Release.Namespace }}}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: supervisor-shutdown}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: supervisor-shutdown
+  annotations:
+    helm.sh/hook: pre-delete
+    helm.sh/hook-weight: '0'
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  template:
+    spec:
+      serviceAccountName: supervisor-shutdown
+      automountServiceAccountToken: true
+      restartPolicy: Never
+      securityContext: {runAsUser: 1654, runAsGroup: 1654}
+      containers:
+        - name: shutdown
+          image: {{ .Values.operatorImage | quote }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          args: [--shutdown]
+          env:
+            - {name: Kubernetes__UseInClusterCredentials, value: 'true'}
+            - name: Kubernetes__Namespace
+              valueFrom: {fieldRef: {fieldPath: metadata.namespace}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}

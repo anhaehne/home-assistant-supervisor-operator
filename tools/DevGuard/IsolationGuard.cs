@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 
 namespace DevGuard;
 
-public sealed record ClusterIdentity(string Name, string DaemonId, string? NodeId = null, string? KubeconfigHash = null);
+public sealed record ClusterIdentity(string Name, string DaemonId, string? NodeId = null, string? KubeconfigHash = null, string? WorkerId = null);
 
 public static partial class IsolationGuard
 {
@@ -76,6 +76,44 @@ public static partial class IsolationGuard
     }
 
     public static string Hash(string content) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
+
+    public static string RuntimeRecovery(string json, ClusterIdentity state, string daemonId)
+    {
+        ValidateIdentity(state);
+        if (string.IsNullOrWhiteSpace(daemonId)) throw new InvalidOperationException("Missing dedicated daemon identity");
+        if (daemonId == state.DaemonId) return "unchanged";
+        using var document = JsonDocument.Parse(json);
+        var nodes = document.RootElement.EnumerateArray().ToArray();
+        if (nodes.Length == 0) return "lost";
+        if (state.NodeId is null || nodes.Length != (state.WorkerId is null ? 1 : 2))
+            throw new InvalidOperationException("Restart left incomplete project nodes; refusing automatic recovery");
+        var primary = nodes.SingleOrDefault(node => node.GetProperty("Name").GetString() == "/" + state.Name + "-control-plane");
+        if (primary.ValueKind == JsonValueKind.Undefined) throw new InvalidOperationException("Recorded control plane is missing");
+        ValidateNode("[" + primary.GetRawText() + "]", state);
+        if (state.WorkerId is not null)
+        {
+            var worker = nodes.SingleOrDefault(node => node.GetProperty("Name").GetString() == "/" + state.Name + "-worker");
+            if (worker.ValueKind == JsonValueKind.Undefined) throw new InvalidOperationException("Recorded worker is missing");
+            ValidateWorker("[" + worker.GetRawText() + "]", state);
+        }
+        return "retained";
+    }
+
+    public static string ValidateWorker(string json, ClusterIdentity state)
+    {
+        ValidateIdentity(state);
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.GetArrayLength() != 1) throw new InvalidOperationException("Expected exactly one recorded kind worker");
+        var worker = document.RootElement[0];
+        var labels = worker.GetProperty("Config").GetProperty("Labels");
+        var id = worker.GetProperty("Id").GetString()!;
+        if (worker.GetProperty("Name").GetString() != "/" + state.Name + "-worker" ||
+            labels.GetProperty("io.x-k8s.kind.cluster").GetString() != state.Name ||
+            labels.GetProperty("io.x-k8s.kind.role").GetString() != "worker" || !ContainerId().IsMatch(id) ||
+            state.WorkerId is not null && state.WorkerId != id)
+            throw new InvalidOperationException("Worker identity differs from the project-owned cluster");
+        return id;
+    }
 
     public static void ValidateNetworkMtu(string json, int underlayMtu)
     {

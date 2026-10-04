@@ -52,9 +52,33 @@ try
         case "name":
             Console.WriteLine(state.Name);
             break;
+        case "node-id":
+            Console.WriteLine(state.NodeId ?? "");
+            break;
+        case "worker-id":
+            Console.WriteLine(state.WorkerId ?? "");
+            break;
+        case "core-node":
+            Console.WriteLine(state.Name + (state.WorkerId is null ? "-control-plane" : "-worker"));
+            break;
+        case "has-worker":
+            Console.WriteLine(state.WorkerId is not null ? "true" : "false");
+            break;
+        case "worker":
+        case "seal-worker":
+            var workerId = IsolationGuard.ValidateWorker(Console.In.ReadToEnd(), state);
+            if (args[0] == "seal-worker") Save(state with { WorkerId = workerId });
+            else if (state.WorkerId is null) throw new InvalidOperationException("Worker identity has not been recorded");
+            break;
         case "runtime":
             if (args.Length != 3 || args[2] != state.DaemonId)
                 throw new InvalidOperationException("The dedicated runtime changed; refusing cluster access or cleanup.");
+            break;
+        case "recover-runtime":
+            if (args.Length != 3) throw new InvalidOperationException("Missing replacement daemon identity");
+            var recovery = IsolationGuard.RuntimeRecovery(Console.In.ReadToEnd(), state, args[2]);
+            if (recovery == "retained") Save(state with { DaemonId = args[2] });
+            Console.WriteLine(recovery);
             break;
         case "node":
         case "seal-node":

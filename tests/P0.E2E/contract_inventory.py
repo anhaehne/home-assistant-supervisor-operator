@@ -82,7 +82,9 @@ supported_get = {"/info", "/supervisor/ping", "/supervisor/info", "/supervisor/s
     "/store/repositories", "/addons", "/jobs/info", "/mounts", "/ingress/panels", "/resolution/info", "/available_updates",
     "/supervisor/available_updates", "/core/api/", "/core/api/config", "/homeassistant/api/", "/homeassistant/api/config",
     "/discovery", "/services", "/services/{service}", "/backups", "/backups/info"}
+supported_get |= {"/core/logs", "/core/logs/latest", "/homeassistant/logs", "/homeassistant/logs/latest", "/supervisor/logs", "/supervisor/logs/latest", "/jobs/{uuid}"}
 supported_post = {"/supervisor/options", "/core/options", "/homeassistant/options", "/supervisor/update"}
+supported_post |= {prefix + action for prefix in ("/core/", "/homeassistant/") for action in ("start", "stop", "restart")}
 route_rows = []
 for api_version, app in harness.versions.items():
     for route in app.routes:
@@ -118,6 +120,7 @@ result = dict(baseline=dict(core="2026.9.4", supervisor="2026.09.3", client=vers
     project_routes=["GET /health/live", "GET /operator/info"],
     notes=["GET registrations also permit HEAD upstream; HEAD is deferred in this spike.",
         "P0 options support the bootstrap timezone/country/diagnostics and Core port/ssl/null refresh-token subset.",
+        "Core start/stop/restart, jobs projection and basic logs require the installed P1 operator; safe-mode, force and historical boot logs are unavailable.",
         "Supervisor update supports the no-upgrade response only.", "Static Supervisor /app assets are deferred; stock Core supplies the tested frontend.",
         "Bundled literal paths are a static inventory, not a claim that all frontend flows are supported."])
 json.dump(result, sys.stdout, indent=2)

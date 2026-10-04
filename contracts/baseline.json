@@ -534,7 +534,7 @@
       "method": "GET",
       "path": "/core/logs",
       "handler": "functools.partial(api_host.advanced_logs, identifier='homeassistant', default_verbose=False)",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
@@ -562,7 +562,7 @@
       "method": "GET",
       "path": "/core/logs/latest",
       "handler": "functools.partial(api_host.advanced_logs, identifier='homeassistant', latest=True, no_colors=True, default_verbose=False)",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
@@ -583,14 +583,14 @@
       "method": "POST",
       "path": "/core/restart",
       "handler": "APIHomeAssistant.restart.__name__",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
       "method": "POST",
       "path": "/core/start",
       "handler": "APIHomeAssistant.start.__name__",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
@@ -604,7 +604,7 @@
       "method": "POST",
       "path": "/core/stop",
       "handler": "APIHomeAssistant.stop.__name__",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
@@ -842,7 +842,7 @@
       "method": "GET",
       "path": "/homeassistant/logs",
       "handler": "functools.partial(api_host.advanced_logs, identifier='homeassistant', default_verbose=False)",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
@@ -870,7 +870,7 @@
       "method": "GET",
       "path": "/homeassistant/logs/latest",
       "handler": "functools.partial(api_host.advanced_logs, identifier='homeassistant', latest=True, no_colors=True, default_verbose=False)",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
@@ -891,14 +891,14 @@
       "method": "POST",
       "path": "/homeassistant/restart",
       "handler": "APIHomeAssistant.restart.__name__",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
       "method": "POST",
       "path": "/homeassistant/start",
       "handler": "APIHomeAssistant.start.__name__",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
@@ -912,7 +912,7 @@
       "method": "POST",
       "path": "/homeassistant/stop",
       "handler": "APIHomeAssistant.stop.__name__",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
@@ -1115,7 +1115,7 @@
       "method": "GET",
       "path": "/jobs/{uuid}",
       "handler": "APIJobs.job_info.__name__",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
@@ -1689,7 +1689,7 @@
       "method": "GET",
       "path": "/supervisor/logs",
       "handler": "get_supervisor_logs",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
@@ -1717,7 +1717,7 @@
       "method": "GET",
       "path": "/supervisor/logs/latest",
       "handler": "functools.partial(get_supervisor_logs, latest=True, no_colors=True)",
-      "status": "deferred"
+      "status": "supported"
     },
     {
       "version": "v1",
@@ -7924,6 +7924,7 @@
   "notes": [
     "GET registrations also permit HEAD upstream; HEAD is deferred in this spike.",
     "P0 options support the bootstrap timezone/country/diagnostics and Core port/ssl/null refresh-token subset.",
+    "Core start/stop/restart, jobs projection and basic logs require the installed P1 operator; safe-mode, force and historical boot logs are unavailable.",
     "Supervisor update supports the no-upgrade response only.",
     "Static Supervisor /app assets are deferred; stock Core supplies the tested frontend.",
     "Bundled literal paths are a static inventory, not a claim that all frontend flows are supported."
