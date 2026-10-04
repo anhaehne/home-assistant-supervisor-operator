@@ -1,14 +1,14 @@
 # Release procedure
 
-Use Semantic Versioning. The next P1 preview is `v0.1.0-alpha.3`; earlier tags and artifacts remain unchanged. Use a new tag for every correction; never move or reuse a published tag.
+Use Semantic Versioning. The current published P1 preview is `v0.1.0-alpha.3`; earlier tags and artifacts remain unchanged. Use a new tag for every correction; never move or reuse a published tag.
 
 1. Complete the full isolated P1 suite for the application source being released, with successful teardown. Packaging-only changes require packaging checks and the published-artifact installation check below.
 2. Commit and push the release changes. Wait for the Deployment artifacts workflow on that commit to pass.
-3. Create an annotated tag on the accepted commit and push it:
+3. Set `VERSION` to a new, unused Semantic Version, create an annotated tag on the accepted commit and push it:
 
    ```sh
-   git tag -a v0.1.0-alpha.3 ACCEPTED_COMMIT -m 'P1 managed ingress proxy preview v0.1.0-alpha.3'
-   git push origin v0.1.0-alpha.3
+   git tag -a "v$VERSION" ACCEPTED_COMMIT -m "P1 preview v$VERSION"
+   git push origin "v$VERSION"
    ```
 
 4. The tag workflow runs unit tests, builds and publishes operator/gateway images and the Helm chart, verifies the manifest bundle and creates a draft GitHub prerelease with checksummed assets. Image references in the chart are pinned by digest.
@@ -34,8 +34,12 @@ The alpha.2 chart and both digest-pinned application images downloaded anonymous
 
 The GitHub prerelease remains a draft ready for publication review; the chart and images are available from GHCR. Cross-node acceptance uses shared test storage and does not validate production CSI attachment, hardware or LAN portability. The P1 preview still excludes add-on lifecycle, backups and Core updates.
 
-## Third prerelease candidate
+## Third prerelease
 
 `v0.1.0-alpha.3` adds managed native HTTP reverse-proxy configuration, including updates on previously initialized PVCs, and recommends `ingress.trustPodNetwork: true` by default. The operator discovers Node Pod CIDRs, grants its ServiceAccount read-only get/list Node access, and updates trusted networks through fenced Core replacement and native trial confirmation. Trust covers every Pod in those networks; Node CIDRs must be authoritative for the CNI and cover ingress peer addresses. Disable discovery and supply explicit proxy addresses for narrower trust, external/host-network peers or unsupported CNI configurations. Review and apply both updated CRDs before upgrading. Supervisor and shutdown-hook workloads now explicitly configure non-root execution and RuntimeDefault seccomp; this does not establish restricted PodSecurity compatibility for all workloads.
 
-Source acceptance completed on 2026-10-04 in `.test-artifacts/p0.wOQyrQ/` with exit zero and complete teardown. The final supplementary unit regression run passed 172 tests with no failures or skips. Real forwarded traffic, discovered-network additions/removals, native promotion, explicit-list changes/revocation, existing/fresh PVCs and the other P0/P1 gates passed. Independent review found no remaining P3-or-higher issues. Published alpha.3 artifact download and fresh-installation acceptance remain pending; do not publish the draft until those checks pass.
+Source acceptance completed on 2026-10-04 in `.test-artifacts/p0.wOQyrQ/` with exit zero and complete teardown. The final supplementary unit regression run passed 172 tests with no failures or skips. Real forwarded traffic, discovered-network additions/removals, native promotion, explicit-list changes/revocation, existing/fresh PVCs and the other P0/P1 gates passed. Independent review found no remaining P3-or-higher issues. [v0.1.0-alpha.3](https://github.com/anhaehne/home-assistant-supervisor-operator/releases/tag/v0.1.0-alpha.3) was published as an immutable GitHub prerelease on 2026-10-04 from commit `70a73517599da12ac17e446639cda2d9ed73a238`. The [main workflow](https://github.com/anhaehne/home-assistant-supervisor-operator/actions/runs/37231410306) and [tag workflow](https://github.com/anhaehne/home-assistant-supervisor-operator/actions/runs/37231555209) passed.
+
+Published-artifact acceptance is `.test-artifacts/release-alpha-3/result.json` (exit zero, complete teardown) and `.test-artifacts/release-alpha-3-install.log`. The chart and both digest-pinned images downloaded anonymously; asset and internal bundle checksums passed, and the registry chart matched its release attachment. A fresh guarded two-node kind installation used chart application-image defaults, reached instance/Core readiness and served the native frontend. Real forwarded requests returned HTTP 200; read-only Node RBAC, exact CIDR union, two individually added and removed network fixtures, fenced Core replacement, native trial promotion and retained PVC/PV/data passed. Graceful uninstall retained the same bound PVC. Both sealed runtime nodes, all owned test volumes and private state were removed. Anonymous GitHub release-asset downloads and checksums passed after publication. Final dedicated Docker inspection showed zero containers and local volumes, 7.583 GB of cached images and 679.8 MB of build cache. No runner interruption occurred.
+
+Validation remains Kubernetes 1.37.0/linux amd64 with test storage; production CSI, hardware and LAN portability remain unvalidated.
