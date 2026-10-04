@@ -1,0 +1,8 @@
+# Existing Linux node, StorageClass and credentials Secret in the chosen namespace.
+selectedNode: REPLACE_WITH_LINUX_NODE
+storageClassName: REPLACE_WITH_STORAGE_CLASS
+credentialsSecret: credentials
+ownership: Ui
+# Optional: set ownership: GitOps when the instance spec is managed by GitOps.
+# Application images default to the references embedded in this artifact's chart.
+# No credentials belong in this file; the Secret needs core-token and gateway-token.

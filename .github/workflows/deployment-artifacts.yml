@@ -1,0 +1,155 @@
+name: Deployment artifacts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deployment-artifacts-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          global-json-file: global.json
+      - name: Locked restore and unit tests
+        run: |
+          dotnet restore HomeAssistantSupervisorOperator.slnx --locked-mode
+          dotnet test HomeAssistantSupervisorOperator.slnx --no-restore --configuration Release --logger 'trx;LogFileName=unit.trx' --results-directory .artifacts/unit
+      - name: Install checksum-pinned Helm
+        run: |
+          curl --fail --location --retry 2 --output "$RUNNER_TEMP/helm.tar.gz" https://get.helm.sh/helm-v3.19.0-linux-amd64.tar.gz
+          echo "a7f81ce08007091b86d8bd696eb4d86b8d0f2e1b9f6c714be62f82f96a594496  $RUNNER_TEMP/helm.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/helm.tar.gz" -C "$RUNNER_TEMP" linux-amd64/helm
+          sudo install -m 755 "$RUNNER_TEMP/linux-amd64/helm" /usr/local/bin/helm
+      - name: Artifact identity
+        id: identity
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          repository="${REPOSITORY,,}"
+          version="$(awk '/^version:/ {print $2}' charts/home-assistant-supervisor-operator/Chart.yaml)-dev.${GITHUB_RUN_NUMBER}.sha${GITHUB_SHA:0:12}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo 'Release tag must be vSEMVER.' >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "repository=$repository" >> "$GITHUB_OUTPUT"
+          echo "operator=ghcr.io/$repository/operator:sha-$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "gateway=ghcr.io/$repository/gateway:sha-$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Login for version-tag publication
+        if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build application images and archives
+        env:
+          OPERATOR_IMAGE: ${{ steps.identity.outputs.operator }}
+          GATEWAY_IMAGE: ${{ steps.identity.outputs.gateway }}
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          dotnet publish src/SupervisorOperator --no-restore --configuration Release --output .build/operator
+          dotnet publish src/CoreGateway --no-restore --configuration Release --output .build/gateway
+          mkdir -p .artifacts/images
+          docker buildx build --platform linux/amd64 --load --file dev/Operator.Dockerfile --tag "$OPERATOR_IMAGE" --label "org.opencontainers.image.source=$SOURCE_URL" --label "org.opencontainers.image.revision=$GITHUB_SHA" .
+          docker buildx build --platform linux/amd64 --load --file dev/Gateway.Dockerfile --tag "$GATEWAY_IMAGE" --label "org.opencontainers.image.source=$SOURCE_URL" --label "org.opencontainers.image.revision=$GITHUB_SHA" .
+          docker save "$OPERATOR_IMAGE" | gzip -n > .artifacts/images/operator.tar.gz
+          docker save "$GATEWAY_IMAGE" | gzip -n > .artifacts/images/gateway.tar.gz
+          docker image inspect "$OPERATOR_IMAGE" "$GATEWAY_IMAGE" --format '{{.Id}} {{join .RepoTags " "}}' > .artifacts/images/image-ids.txt
+          (cd .artifacts/images && sha256sum operator.tar.gz gateway.tar.gz image-ids.txt > SHA256SUMS)
+      - name: Publish release images and resolve immutable references
+        id: references
+        env:
+          OPERATOR_IMAGE: ${{ steps.identity.outputs.operator }}
+          GATEWAY_IMAGE: ${{ steps.identity.outputs.gateway }}
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_EVENT_NAME" != pull_request ]]; then
+            for component in operator gateway; do
+              if [[ "$component" == operator ]]; then image="$OPERATOR_IMAGE"; else image="$GATEWAY_IMAGE"; fi
+              repository="${image%:*}"
+              docker tag "$image" "$repository:$VERSION"
+              docker push "$image"
+              docker push "$repository:$VERSION"
+              reference=$(docker image inspect "$image" --format '{{index .RepoDigests 0}}')
+              [[ "$reference" == "$repository"@sha256:* ]] || { echo 'Missing pushed image digest.' >&2; exit 1; }
+              echo "$component=$reference" >> "$GITHUB_OUTPUT"
+            done
+          else
+            echo "operator=$OPERATOR_IMAGE" >> "$GITHUB_OUTPUT"
+            echo "gateway=$GATEWAY_IMAGE" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Package Helm and manifest artifacts
+        env:
+          VERSION: ${{ steps.identity.outputs.version }}
+          OPERATOR_IMAGE: ${{ steps.references.outputs.operator }}
+          GATEWAY_IMAGE: ${{ steps.references.outputs.gateway }}
+        run: |
+          ./hack/package-deployment.sh "$VERSION" .artifacts/deployment "$OPERATOR_IMAGE" "$GATEWAY_IMAGE"
+          (cd .artifacts/deployment && sha256sum *.tgz *.tar.gz images.yaml > SHA256SUMS)
+      - name: Verify manifest bundle and render guards
+        env:
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          bundle="$RUNNER_TEMP/deployment-bundle"
+          mkdir -p "$bundle"
+          tar -xzf ".artifacts/deployment/home-assistant-supervisor-operator-$VERSION-manifests.tar.gz" -C "$bundle"
+          (cd "$bundle" && sha256sum --check SHA256SUMS)
+          if bash "$bundle/render-manifests.sh" ci-verification "$bundle/installation-values.example.yaml" "$bundle/rejected"; then
+            echo 'Unconfigured installation values were accepted.' >&2
+            exit 1
+          fi
+          printf 'selectedNode: ci-linux-node\nstorageClassName: ci-storage\ncredentialsSecret: ci-credentials\n' > "$RUNNER_TEMP/installation-values.yaml"
+          bash "$bundle/render-manifests.sh" ci-verification "$RUNNER_TEMP/installation-values.yaml" "$bundle/rendered"
+          grep -q "object.metadata.namespace == 'ci-verification'" "$bundle/rendered/manifests.yaml"
+          ! grep -q 'helm.sh/hook: pre-delete' "$bundle/rendered/manifests.yaml"
+          ! grep -q 'REPLACE_WITH_' "$bundle/rendered/manifests.yaml"
+          ! grep -q '^kind: Secret$' "$bundle/rendered/manifests.yaml"
+      - name: Publish versioned Helm chart to GHCR
+        if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+          REPOSITORY: ${{ steps.identity.outputs.repository }}
+          VERSION: ${{ steps.identity.outputs.version }}
+        run: |
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$REGISTRY_USER" --password-stdin
+          helm push ".artifacts/deployment/home-assistant-supervisor-operator-$VERSION.tgz" "oci://ghcr.io/$REPOSITORY/charts"
+      - name: Upload deployment artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: deployment-${{ steps.identity.outputs.version }}
+          path: .artifacts/deployment/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload image artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: container-images-${{ steps.identity.outputs.version }}
+          path: .artifacts/images/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unit-test-results
+          path: .artifacts/unit/
+          if-no-files-found: warn

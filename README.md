@@ -22,3 +22,11 @@ dotnet test --no-restore
 ./hack/test-isolation.sh
 ./hack/test-cluster.sh
 ```
+
+## Deployment artifacts
+
+[Deployment artifacts](.github/workflows/deployment-artifacts.yml) runs on pull requests, pushes to `main`, version tags and manual dispatch. It restores locked dependencies, runs unit tests, builds linux/amd64 operator/gateway images, and uploads image archives, a versioned Helm chart and a kubectl/GitOps manifest bundle with SHA-256 checksums. Download `deployment-VERSION` and `container-images-VERSION` from the Actions run. Installation and manifest rendering instructions are included in the bundle and in [the artifact guide](packaging/README.md).
+
+A `vSEMVER` tag (for example `v0.1.0` or `v0.1.0-rc.1`) additionally publishes images under `ghcr.io/OWNER/REPOSITORY/operator` and `/gateway`, and the Helm chart under `oci://ghcr.io/OWNER/REPOSITORY/charts/home-assistant-supervisor-operator`. Release chart defaults use the pushed image digests. The workflow uses the repository's `GITHUB_TOKEN`; configure GHCR package visibility or cluster registry authentication as appropriate. PR, branch and manual non-tag builds only upload artifacts. Unpublished charts use full-commit image tags supplied by their accompanying archives.
+
+The artifact workflow validates unit tests and packaging; it does not replace the full isolated kind/native browser/P1 acceptance release gate. Complete that gate for the exact source revision before tagging a release. Only the P1 development preview on Kubernetes 1.37.0 and linux/amd64 is validated. Namespace, selected node, storage and credentials remain installation-specific. Helm hooks are omitted from raw manifests; GitOps removal must preserve the PVC and complete graceful finalization.
