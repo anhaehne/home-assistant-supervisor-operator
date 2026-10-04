@@ -17,3 +17,11 @@ Use Semantic Versioning and start with `v0.1.0-alpha.1` while only the P1 previe
 7. Replace the draft's pending acceptance paragraph with the actual verification evidence and limitations. Publish it as a prerelease. Enable GitHub immutable releases before publishing to protect the tag and release assets.
 
 A green artifact workflow alone does not prove that anonymous downloads or application installation work. Do not publish the draft while those checks remain blocked. Never rerun a successful tag build to replace its image or chart contents; create a new version instead.
+
+## First prerelease evidence
+
+[v0.1.0-alpha.1](https://github.com/anhaehne/home-assistant-supervisor-operator/releases/tag/v0.1.0-alpha.1) targets commit `0603633a49f4bd0ff2374908c2d9ed44ce898fa3`. Its [tag workflow](https://github.com/anhaehne/home-assistant-supervisor-operator/actions/runs/37214582544) passed on 2026-10-04, including 111 unit tests. The application source had already passed the full P1 suite in `.test-artifacts/p0.jXSyWT`; intervening changes concerned packaging and release automation.
+
+The repository is public and immutable releases are enabled. Chart and both digest-pinned images downloaded anonymously with empty credential configurations. All release asset checksums and internal manifest bundle checksums passed, and the GHCR chart matched the release attachment byte-for-byte. The bundle rendered successfully for a separate namespace.
+
+The published chart installed in a fresh guarded two-node Kubernetes 1.37.0 kind cluster without application image overrides or registry credentials. Core and gateway were Ready with zero restarts, instance reconciliation reported Succeeded, and Core's web interface responded. Graceful uninstall retained the instance-data PVC; teardown verified both nodes and their volumes were absent and removed local state. Local evidence is in `.test-artifacts/release-alpha-1` and `.test-artifacts/release-alpha-1-install.log`. No runner interruption occurred.
