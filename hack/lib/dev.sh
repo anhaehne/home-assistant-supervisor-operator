@@ -47,6 +47,21 @@ runtime_id() {
     fail 'Dedicated Docker daemon did not return within 60 seconds; state retained.'
 }
 cluster_name() { guard name "$DEV_IDENTITY"; }
+shared_volume_path() {
+    local name volume label path
+    check_runtime || return
+    name=$(cluster_name) || return
+    volume=$(cat "$DEV_STATE/shared-volume") || return
+    [[ "$volume" == "$name-shared-data" ]] || fail 'Shared test volume name differs from recorded cluster.'
+    label=$(local_tool docker --host "$DEV_ENDPOINT" volume inspect "$volume" --format '{{index .Labels "ha-operator.io/test-cluster"}}') || return
+    [[ "$label" == "$name" ]] || fail 'Shared test volume ownership differs from recorded cluster.'
+    path=$(local_tool docker --host "$DEV_ENDPOINT" volume inspect "$volume" --format '{{.Mountpoint}}') || return
+    [[ "$path" == /* && "$path" != *$'\n'* && "$path" != *' '* ]] || fail 'Invalid shared test volume path.'
+    if [[ -f "$DEV_STATE/shared-path" ]]; then
+        [[ "$path" == "$(cat "$DEV_STATE/shared-path")" ]] || fail 'Shared test volume path changed.'
+    fi
+    printf '%s' "$path"
+}
 runtime_recovery() {
     local replacement=$1 ids inspection name role found sealed
     name=$(cluster_name) || return

@@ -15,13 +15,17 @@ P1 development preview: Core lifecycle only. Add-ons, backups and updates remain
 
 ## Installation
 
-Configure a selected Linux node, storage class and an existing namespace-local credentials Secret using the included installation-values.example.yaml. See the artifact guide in the manifest bundle for credential keys and storage requirements.
+Configure a storage class and an existing namespace-local credentials Secret using the included installation-values.example.yaml. See the artifact guide in the manifest bundle for credential keys and storage requirements.
 
 \`\`\`sh
 helm install haso oci://ghcr.io/$repository/charts/home-assistant-supervisor-operator --version $version --namespace home-assistant --create-namespace --values installation-values.yaml
 \`\`\`
 
 The chart uses immutable operator/gateway image digests listed in images.yaml. For kubectl or GitOps, unpack the manifest bundle, configure installation values, and run its render-manifests.sh helper. Verify downloaded assets with SHA256SUMS.
+
+## Changes
+
+Core no longer requires a selected node. Kubernetes schedules Core according to PVC topology. Recovery on another node requires accessible storage and verified termination of the old process. The isolated suite covers legacy selector removal and cross-node recovery with the same PVC/PV and retained configuration using shared test storage; production CSI behavior remains unvalidated.
 
 ## Acceptance before publication
 

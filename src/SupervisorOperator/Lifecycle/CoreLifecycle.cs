@@ -140,11 +140,6 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
             await Condition(instance, "FenceRequired", "Core Pod survives without its StatefulSet; verify its termination before recreating the workload", cancellation);
             return;
         }
-        if (!string.IsNullOrEmpty(pod?.Spec.NodeName) && pod.Spec.NodeName != instance.Spec.SelectedNode)
-        {
-            await Condition(instance, "FenceRequired", "Core Pod placement differs from the selected node; no replacement is allowed", cancellation);
-            return;
-        }
         if (pod is not null && pod.Metadata.DeletionTimestamp is not null)
         {
             await Condition(instance, "WaitingForTermination", "Waiting for the old Core Pod to terminate; never force-delete an unreachable Pod", cancellation);
@@ -254,10 +249,8 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
         var workload = KubernetesYaml.Deserialize<V1StatefulSet>(template.Data["core.yaml"]);
         workload.Metadata.Name = "core";
         workload.Metadata.NamespaceProperty = installation.Namespace;
-        // Scheduler affinity preserves a single selected node even when it is unreachable.
-        workload.Spec.Template.Spec.NodeSelector = new Dictionary<string, string> { ["kubernetes.io/hostname"] = instance.Spec.SelectedNode };
         workload.Metadata.Annotations ??= new Dictionary<string, string>();
-        workload.Metadata.Annotations[TemplateHash] = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(template.Data["core.yaml"] + instance.Spec.SelectedNode)));
+        workload.Metadata.Annotations[TemplateHash] = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(template.Data["core.yaml"])));
         return workload;
     }
 

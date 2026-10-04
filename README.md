@@ -25,15 +25,16 @@ dotnet test --no-restore
 
 ## Get started with Helm
 
-The published `0.1.0-alpha.1` chart includes public, digest-pinned operator and gateway images. You do not need to build images yourself. This is the P1 development preview: only Kubernetes 1.37.0 on linux/amd64 has been validated; add-on management, Core updates and backups/restores remain later work.
+The `0.1.0-alpha.2` release candidate removes Core node pinning: Kubernetes selects placement using the PVC topology. The tag workflow publishes chart/image artifacts and prepares a draft GitHub prerelease; see the [release procedure](packaging/RELEASING.md) for acceptance and publication status. Cross-node recovery requires storage accessible on the replacement node and verified termination of the previous Core process. The previous `0.1.0-alpha.1` release still requires `selectedNode`.
 
-You need Helm 3, kubectl, OpenSSL, a schedulable Linux amd64 node, and a working StorageClass that can provision storage on that node. Your installation account must be able to create CRDs and cluster admission policies. The chart supports one installation per cluster, and the selected Core node cannot be changed after installation.
+The `0.1.0-alpha.2` chart includes public, digest-pinned operator and gateway images. You do not need to build images yourself. This is the P1 development preview: only Kubernetes 1.37.0 on linux/amd64 has been validated; add-on management, Core updates and backups/restores remain later work.
 
-Choose your cluster context, node and StorageClass. Replace the example values below:
+You need Helm 3, kubectl, OpenSSL, schedulable Linux amd64 nodes, and a working StorageClass. Your installation account must be able to create CRDs and cluster admission policies. The chart supports one installation per cluster; storage topology determines which nodes can run Core.
+
+Choose your cluster context and StorageClass. Replace the example values below:
 
 ```sh
 KUBE_CONTEXT=YOUR_CONTEXT
-CORE_NODE=YOUR_LINUX_NODE
 STORAGE_CLASS=YOUR_STORAGE_CLASS
 
 kubectl --context "$KUBE_CONTEXT" get nodes
@@ -64,9 +65,8 @@ Install the pinned prerelease, then wait for Core's application health. Helm's r
 ```sh
 helm upgrade --install haso \
   oci://ghcr.io/anhaehne/home-assistant-supervisor-operator/charts/home-assistant-supervisor-operator \
-  --version 0.1.0-alpha.1 \
+  --version 0.1.0-alpha.2 \
   --kube-context "$KUBE_CONTEXT" --namespace home-assistant \
-  --set-string selectedNode="$CORE_NODE" \
   --set-string storageClassName="$STORAGE_CLASS" \
   --set-string credentialsSecret=credentials \
   --wait --timeout 10m
@@ -84,7 +84,7 @@ kubectl --context "$KUBE_CONTEXT" --namespace home-assistant port-forward \
 
 Visit <http://127.0.0.1:8123> and complete native onboarding. Keep the port-forward running while using the frontend. Expose the `core` Service for permanent access; the Supervisor and gateway Services are internal APIs. See [the installation guide](docs/p1-foundation.md#installing-the-development-preview) for ingress and GitOps ownership options.
 
-To uninstall, use `helm --kube-context "$KUBE_CONTEXT" uninstall haso --namespace home-assistant --wait --timeout 10m`. The shutdown hook stops Core gracefully and retains the `instance-data` PVC. Keep the namespace and credentials Secret if you intend to reinstall with the same release, selected node and storage. For chart upgrades, review and apply CRDs separately first; Helm does not upgrade CRDs from the chart's `crds/` directory. See [the artifact guide](packaging/README.md#helm) for details.
+To uninstall, use `helm --kube-context "$KUBE_CONTEXT" uninstall haso --namespace home-assistant --wait --timeout 10m`. The shutdown hook stops Core gracefully and retains the `instance-data` PVC. Keep the namespace and credentials Secret if you intend to reinstall with the same release and storage. For chart upgrades, review and apply CRDs separately first; Helm does not upgrade CRDs from the chart's `crds/` directory. See [the artifact guide](packaging/README.md#helm) for details.
 
 ## Deployment artifacts
 
@@ -92,6 +92,6 @@ To uninstall, use `helm --kube-context "$KUBE_CONTEXT" uninstall haso --namespac
 
 A `vSEMVER` tag (for example `v0.1.0` or `v0.1.0-rc.1`) additionally publishes images under `ghcr.io/OWNER/REPOSITORY/operator` and `/gateway`, and the Helm chart under `oci://ghcr.io/OWNER/REPOSITORY/charts/home-assistant-supervisor-operator`. Release chart defaults use the pushed image digests. After publication succeeds, the workflow creates a draft GitHub release with the chart, manifest bundle, image references and checksums; prerelease tags are marked as prereleases. Published releases are never overwritten. The workflow uses the repository's `GITHUB_TOKEN`; configure GHCR package visibility or cluster registry authentication as appropriate. PR, branch and manual non-tag builds only upload artifacts. Unpublished charts use full-commit image tags supplied by their accompanying archives.
 
-The artifact workflow validates unit tests and packaging; it does not replace the full isolated kind/native browser/P1 acceptance release gate. Complete that gate for the application source being released, and verify packaging-only changes with the published-artifact installation check. Only the P1 development preview on Kubernetes 1.37.0 and linux/amd64 is validated. Namespace, selected node, storage and credentials remain installation-specific. Helm hooks are omitted from raw manifests; GitOps removal must preserve the PVC and complete graceful finalization.
+The artifact workflow validates unit tests and packaging; it does not replace the full isolated kind/native browser/P1 acceptance release gate. Complete that gate for the application source being released, and verify packaging-only changes with the published-artifact installation check. Only the P1 development preview on Kubernetes 1.37.0 and linux/amd64 is validated. Namespace, storage and credentials remain installation-specific in current source. Helm hooks are omitted from raw manifests; GitOps removal must preserve the PVC and complete graceful finalization.
 
 See [the release procedure](packaging/RELEASING.md) for acceptance, immutable tags and public installation checks.

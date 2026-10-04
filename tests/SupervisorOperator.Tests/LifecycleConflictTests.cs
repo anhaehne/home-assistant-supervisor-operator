@@ -122,15 +122,18 @@ public sealed class LifecycleConflictTests
         Assert.Equal("False", environment.Handler.PublishedInstance.Status.Conditions.Single().Status);
     }
 
-    [Fact]
-    public async Task ReadyPodOwnedByCurrentInstanceAndStatefulSetPublishesSuccess()
+    [Theory]
+    [InlineData("initial-node")]
+    [InlineData("recovery-node")]
+    public async Task ReadyPodOwnedByCurrentInstanceAndStatefulSetPublishesSuccess(string node)
     {
         using var environment = new Fixture();
         environment.Handler.Operation = environment.Operation("Succeeded");
         environment.Handler.Workload = OwnedWorkload(environment.Instance);
         environment.Handler.Pod = OwnedPod(environment.Instance, "current-workload");
+        environment.Handler.Pod.Spec.NodeName = node;
         environment.Handler.Workload.Metadata.Annotations[CoreLifecycle.TemplateHash] = Convert.ToHexString(
-            System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(ConflictApi.TemplateYaml + environment.Instance.Spec.SelectedNode)));
+            System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(ConflictApi.TemplateYaml)));
         environment.Instance.Status.PodUid = environment.Handler.Pod.Metadata.Uid;
         await environment.Controller.ReconcileAsync(environment.Instance, CancellationToken.None);
         Assert.Equal("Succeeded", environment.Handler.PublishedInstance!.Status.Conditions.Single().Reason);
@@ -189,7 +192,7 @@ public sealed class LifecycleConflictTests
     {
         public HomeAssistantInstance Instance { get; } = new() { Metadata = new() { Name = HomeAssistantInstance.ResourceName,
             NamespaceProperty = "test-install", Uid = "instance", Generation = 1, ResourceVersion = "1" },
-            Spec = new() { SelectedNode = "selected-node", Command = new() { Id = new string('a', 32), Action = "Start" } } };
+            Spec = new() { Command = new() { Id = new string('a', 32), Action = "Start" } } };
         public ConflictApi Handler { get; }
         public CoreLifecycle Lifecycle { get; }
         public InstanceController Controller { get; }
@@ -214,7 +217,7 @@ public sealed class LifecycleConflictTests
     {
         var instance = new HomeAssistantInstance { Metadata = new() { Name = HomeAssistantInstance.ResourceName,
             NamespaceProperty = "test-install", Uid = "instance", Generation = 1, ResourceVersion = "1" },
-            Spec = new() { SelectedNode = "selected-node", Command = new() { Id = new string('a', 32), Action = "Start" } } };
+            Spec = new() { Command = new() { Id = new string('a', 32), Action = "Start" } } };
         var handler = new ConflictApi(instance);
         var configuration = new KubernetesClientConfiguration { Host = "http://unit.invalid" };
         using var api = new Kubernetes(configuration, handler);

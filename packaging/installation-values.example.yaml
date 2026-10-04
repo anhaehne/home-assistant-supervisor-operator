@@ -1,5 +1,4 @@
-# Existing Linux node, StorageClass and credentials Secret in the chosen namespace.
-selectedNode: REPLACE_WITH_LINUX_NODE
+# Working StorageClass and credentials Secret in the chosen namespace.
 storageClassName: REPLACE_WITH_STORAGE_CLASS
 credentialsSecret: credentials
 ownership: Ui

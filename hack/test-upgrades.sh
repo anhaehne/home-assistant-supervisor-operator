@@ -7,6 +7,33 @@ artifacts=${1:?Provide the P1 artifact directory}
 ns=haso-p1
 instance=homeassistantinstance/home-assistant
 mkdir -p "$artifacts"
+# Model the prior alpha controller's hash and injected selector. The current
+# controller must retire that workload gracefully and retain the existing PVC.
+legacy_node=$(guard core-node "$DEV_IDENTITY")
+old_uid=$(kctl -n "$ns" get pod/core-0 -o jsonpath='{.metadata.uid}')
+pvc_uid=$(kctl -n "$ns" get pvc/instance-data -o jsonpath='{.metadata.uid}')
+# Preserve the trailing newline from the ConfigMap (command substitution trims
+# it), so this is the old controller's exact hash input rather than a sentinel.
+kctl -n "$ns" get configmap/core-workload -o jsonpath='{.data.core\.yaml}' > "$DEV_STATE/legacy-core.yaml"
+legacy_hash=$({ cat "$DEV_STATE/legacy-core.yaml"; printf '%s' "$legacy_node"; } | sha256sum | cut -d ' ' -f 1 | tr 'a-f' 'A-F')
+kctl -n "$ns" patch statefulset/core --type=merge -p "{\"metadata\":{\"annotations\":{\"ha-operator.io/template-hash\":\"$legacy_hash\"}},\"spec\":{\"template\":{\"spec\":{\"nodeSelector\":{\"kubernetes.io/hostname\":\"$legacy_node\"}}}}}"
+for attempt in {1..180}; do
+    check_cluster
+    worker_containers=$(local_tool docker --host "$DEV_ENDPOINT" exec "$(cluster_name)-worker" crictl ps --name '^core$' -q)
+    control_containers=$(local_tool docker --host "$DEV_ENDPOINT" exec "$(cluster_name)-control-plane" crictl ps --name '^core$' -q)
+    containers=$(printf '%s\n' "$worker_containers" "$control_containers" | sed '/^$/d')
+    [[ "$containers" != *$'\n'* ]] || fail 'Core processes overlapped while removing legacy pinning.'
+    new_uid=$(kctl -n "$ns" get pod/core-0 -o jsonpath='{.metadata.uid}' 2>/dev/null || true)
+    [[ -z "$new_uid" || "$new_uid" == "$old_uid" ]] || break
+    sleep 1
+done
+[[ -n "$new_uid" && "$new_uid" != "$old_uid" ]] || fail 'Legacy pinned workload was not replaced.'
+kctl -n "$ns" wait --for=condition=Ready pod/core-0 --timeout=600s
+kctl -n "$ns" wait --for=jsonpath='{.status.podUid}'="$new_uid" "$instance" --timeout=120s
+kctl -n "$ns" wait --for=jsonpath='{.status.conditions[0].status}'=True "$instance" --timeout=120s
+[[ -z $(kctl -n "$ns" get statefulset/core -o jsonpath='{.spec.template.spec.nodeSelector}') ]] || fail 'Upgrade retained legacy node pinning.'
+[[ $(kctl -n "$ns" get pvc/instance-data -o jsonpath='{.metadata.uid}') == "$pvc_uid" ]] || fail 'Removing pinning replaced the retained PVC.'
+[[ $(kctl -n "$ns" exec core-0 -c core -- cat /config/p1-retained.txt) == retained ]] || fail 'Removing pinning lost configuration.'
 forward=''
 trap '[[ -z "$forward" ]] || { kill "$forward" 2>/dev/null || true; wait "$forward" 2>/dev/null || true; }' EXIT
 # An early v1alpha1 object may omit all newly optional fields. Kubernetes
@@ -64,4 +91,4 @@ done
 [[ "$service" == core ]] || fail 'Chart workload was not restored.'
 kctl -n "$ns" wait --for=condition=Ready pod/core-0 --timeout=600s
 kctl -n "$ns" wait --for=jsonpath='{.status.conditions[0].status}'=True "$instance" --timeout=600s
-printf '%s\n' 'P1 optional-field migration defaults, immutable StatefulSet replacement without overlapping Core processes, retained data and unavailable update/restore rejection passed.'
+printf '%s\n' 'P1 removal of legacy pinning, optional-field defaults, immutable StatefulSet replacement without overlapping Core processes, retained data and unavailable update/restore rejection passed.'

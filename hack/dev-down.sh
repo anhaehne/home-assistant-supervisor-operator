@@ -29,5 +29,11 @@ if [[ -f "$DEV_STATE/node-volumes" ]]; then
         [[ -z "$remaining_volumes" ]] || fail "Recorded node data volume remains after kind cleanup: $volume; state retained."
     done < "$DEV_STATE/node-volumes"
 fi
+if [[ -f "$DEV_STATE/shared-volume" ]]; then
+    shared_volume_path >/dev/null
+    volume=$(cat "$DEV_STATE/shared-volume")
+    local_tool docker --host "$DEV_ENDPOINT" volume rm "$volume" >/dev/null
+    [[ -z $(local_tool docker --host "$DEV_ENDPOINT" volume ls --filter "name=^${volume}$" --format '{{.Name}}') ]] || fail 'Shared test volume remains after cleanup.'
+fi
 rm -r -- "$DEV_STATE"
 printf 'Removed recorded cluster and local state: %s\n' "$name"

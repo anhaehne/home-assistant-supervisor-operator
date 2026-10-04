@@ -3,7 +3,6 @@ kind: HomeAssistantInstance
 metadata:
   name: home-assistant
 spec:
-  selectedNode: {{ required "selectedNode must identify the tested storage/LAN node" .Values.selectedNode | quote }}
   desiredState: Running
   ownership: {{ .Values.ownership | quote }}
   options: {timezone: UTC, country: US, port: 80, ssl: false, diagnostics: false}

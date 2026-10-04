@@ -43,22 +43,21 @@ reject -n "$ns" create -f - <<'EOF'
 apiVersion: ha-operator.io/v1alpha1
 kind: HomeAssistantInstance
 metadata: {name: second}
-spec: {selectedNode: invalid}
+spec: {}
 EOF
 reject -n default create -f - <<'EOF'
 apiVersion: ha-operator.io/v1alpha1
 kind: HomeAssistantInstance
 metadata: {name: home-assistant}
-spec: {selectedNode: invalid}
+spec: {}
 EOF
-reject -n "$ns" patch "$instance" --type=merge -p '{"spec":{"selectedNode":"other-node"}}'
 reject -n "$ns" scale deployment/supervisor --replicas=2
 reject -n "$ns" scale statefulset/core --replicas=2
 reject -n default get homeassistantinstances --as="system:serviceaccount:$ns:supervisor"
 reject -n "$ns" get secrets --as="system:serviceaccount:$ns:supervisor"
 result=0
 hctl install second "$DEV_ROOT/charts/home-assistant-supervisor-operator" -n default \
-    --set operatorImage=haso/operator:p0 --set gatewayImage=haso/gateway:p0 --set selectedNode=invalid > "$artifacts/second-install.log" 2>&1 || result=$?
+    --set operatorImage=haso/operator:p0 --set gatewayImage=haso/gateway:p0 > "$artifacts/second-install.log" 2>&1 || result=$?
 [[ "$result" != 0 ]] && rg -q 'ownership|already exists' "$artifacts/second-install.log" || fail 'Second Helm installation was not rejected.'
 
 kctl -n "$ns" exec core-0 -c core -- sh -ec 'printf retained > /config/p1-retained.txt'
@@ -136,8 +135,8 @@ kctl -n "$ns" wait --for=delete pod/core-0 --timeout=120s
 [[ $(kctl -n "$ns" get pvc/instance-data -o jsonpath='{.status.phase}') == Bound ]] || fail 'Helm uninstall did not retain the data PVC.'
 hctl install haso "$DEV_ROOT/charts/home-assistant-supervisor-operator" -n "$ns" \
     --set operatorImage=haso/operator:p0 --set gatewayImage=haso/gateway:p0 --set imagePullPolicy=Never \
-    --set coreImage=ghcr.io/home-assistant/home-assistant:2026.9.4 --set "selectedNode=$(guard core-node "$DEV_IDENTITY")" \
-    --set "operatorNode=$(cluster_name)-control-plane" \
+    --set coreImage=ghcr.io/home-assistant/home-assistant:2026.9.4 \
+    --set storageClassName=haso-test-shared --set "operatorNode=$(cluster_name)-control-plane" \
     --set 'operatorTolerations[0].key=node-role.kubernetes.io/control-plane' \
     --set 'operatorTolerations[0].operator=Exists' --set 'operatorTolerations[0].effect=NoSchedule' --wait --timeout 5m > "$artifacts/reinstall.log"
 healthy

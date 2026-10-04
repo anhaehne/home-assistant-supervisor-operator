@@ -2,6 +2,6 @@ apiVersion: v2
 name: home-assistant-supervisor-operator
 description: Singleton Home Assistant Core operator with a Supervisor-compatible API
 type: application
-version: 0.1.0
-appVersion: 0.1.0
+version: 0.1.0-alpha.2
+appVersion: 0.1.0-alpha.2
 kubeVersion: '>=1.37.0-0'

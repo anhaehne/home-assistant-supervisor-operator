@@ -23,15 +23,7 @@ spec:
             metadata: {type: object}
             spec:
               type: object
-              required: [selectedNode]
               properties:
-                selectedNode:
-                  type: string
-                  minLength: 1
-                  maxLength: 253
-                  x-kubernetes-validations:
-                    - rule: self == oldSelf
-                      message: Placement changes require a fenced storage migration; the P1 selected node is immutable.
                 desiredState: {type: string, enum: [Running, Stopped], default: Running}
                 ownership: {type: string, enum: [Ui, GitOps], default: Ui}
                 command:

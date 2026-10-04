@@ -15,7 +15,6 @@ public sealed class InstanceSpec
 {
     public string DesiredState { get; set; } = "Running";
     public string Ownership { get; set; } = "Ui";
-    public string SelectedNode { get; set; } = "";
     public InstanceOptions Options { get; set; } = new(Country: "US");
     public CoreCommand? Command { get; set; }
 }

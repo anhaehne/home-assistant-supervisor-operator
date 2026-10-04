@@ -4,11 +4,11 @@ This bundle contains the versioned chart, separate CRDs, a rendered example and 
 
 ## Helm
 
-Create the installation namespace and an existing credentials Secret with separate random `core-token` and `gateway-token` keys using your secret-management process. Keep credential values out of command history and Git. Set the selected Linux node and a working StorageClass:
+Create the installation namespace and an existing credentials Secret with separate random `core-token` and `gateway-token` keys using your secret-management process. Keep credential values out of command history and Git. Set a working StorageClass. Kubernetes schedules Core; for recovery to another node, use storage accessible from that node:
 
 ```sh
 helm upgrade --install haso ./chart.tgz --namespace home-assistant \
-  --set-string selectedNode=YOUR_LINUX_NODE --set-string storageClassName=YOUR_STORAGE_CLASS \
+  --set-string storageClassName=YOUR_STORAGE_CLASS \
   --set-string credentialsSecret=credentials --wait --timeout 10m
 ```
 

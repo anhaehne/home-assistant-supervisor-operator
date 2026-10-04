@@ -122,7 +122,7 @@ jobs:
             echo 'Unconfigured installation values were accepted.' >&2
             exit 1
           fi
-          printf 'selectedNode: ci-linux-node\nstorageClassName: ci-storage\ncredentialsSecret: ci-credentials\n' > "$RUNNER_TEMP/installation-values.yaml"
+          printf 'storageClassName: ci-storage\ncredentialsSecret: ci-credentials\n' > "$RUNNER_TEMP/installation-values.yaml"
           bash "$bundle/render-manifests.sh" ci-verification "$RUNNER_TEMP/installation-values.yaml" "$bundle/rendered"
           grep -q "object.metadata.namespace == 'ci-verification'" "$bundle/rendered/manifests.yaml"
           ! grep -q 'helm.sh/hook: pre-delete' "$bundle/rendered/manifests.yaml"

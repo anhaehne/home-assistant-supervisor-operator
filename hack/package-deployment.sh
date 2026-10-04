@@ -16,7 +16,7 @@ temporary=$(mktemp -d)
 trap 'rm -rf -- "$temporary"' EXIT
 cp -R "$root/charts/home-assistant-supervisor-operator" "$temporary/chart"
 sed -i "s|^operatorImage:.*|operatorImage: '$operator_image'|; s|^gatewayImage:.*|gatewayImage: '$gateway_image'|" "$temporary/chart/values.yaml"
-helm lint "$temporary/chart" --strict --kube-version 1.37.0 --set-string selectedNode=example-linux-node
+helm lint "$temporary/chart" --strict --kube-version 1.37.0
 helm package "$temporary/chart" --version "$version" --app-version "$version" --destination "$output"
 chart="home-assistant-supervisor-operator-$version.tgz"
 bundle="$temporary/bundle"
@@ -27,7 +27,7 @@ cp "$root/packaging/installation-values.example.yaml" "$bundle/installation-valu
 cp "$root/packaging/README.md" "$bundle/README.md"
 helm show crds "$output/$chart" > "$bundle/crds.yaml"
 helm template haso "$output/$chart" --namespace home-assistant --kube-version 1.37.0 --no-hooks \
-    --set-string selectedNode=REPLACE_WITH_LINUX_NODE --set-string storageClassName=REPLACE_WITH_STORAGE_CLASS > "$bundle/manifests.example.yaml"
+    --set-string storageClassName=REPLACE_WITH_STORAGE_CLASS > "$bundle/manifests.example.yaml"
 printf 'operatorImage: %s\ngatewayImage: %s\nversion: %s\nplatform: linux/amd64\n' "$operator_image" "$gateway_image" "$version" > "$output/images.yaml"
 (cd "$bundle" && sha256sum chart.tgz crds.yaml manifests.example.yaml render-manifests.sh installation-values.example.yaml README.md > SHA256SUMS)
 tar -czf "$output/home-assistant-supervisor-operator-$version-manifests.tar.gz" -C "$bundle" .
