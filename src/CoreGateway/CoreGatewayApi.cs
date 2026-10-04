@@ -15,6 +15,8 @@ public static class CoreGatewayApi
         if (!Path.IsPathFullyQualified(socketPath)) throw new InvalidOperationException("Core socket must be an absolute local path.");
         services.AddSingleton(new GatewayCredential(token));
         services.AddSingleton(_ => new CoreSocketClient(socketPath));
+        services.AddSingleton<ICoreHttpConfigurationTransport>(_ => new CoreHttpConfigurationTransport(socketPath));
+        services.AddSingleton<CoreHttpProxyClient>();
         services.AddControllers().ConfigureApplicationPartManager(manager => manager.ApplicationParts.Clear())
             .AddApplicationPart(typeof(CoreGatewayApi).Assembly)
             .AddJsonOptions(options => options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower);

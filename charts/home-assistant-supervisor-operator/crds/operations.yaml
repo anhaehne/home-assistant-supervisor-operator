@@ -34,7 +34,9 @@ spec:
             status:
               type: object
               properties:
-                phase: {type: string, enum: [Accepted, Stopping, Starting, WaitingForHealth, Succeeded, Failed]}
+                phase: {type: string, enum: [Accepted, ApplyingHttpConfiguration, Stopping, Starting, WaitingForHealth, Succeeded, Failed]}
                 error: {type: string, nullable: true, maxLength: 4096}
                 completedAt: {type: string, nullable: true, format: date-time}
                 startedAt: {type: string, nullable: true, format: date-time}
+                httpProxyFingerprint: {type: string, nullable: true, pattern: '^[A-Fa-f0-9]{64}$'}
+                httpProxyStagedPodUid: {type: string, nullable: true}

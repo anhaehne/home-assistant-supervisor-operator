@@ -107,7 +107,7 @@ for attempt in {1..40}; do
     sleep 1
 done
 old_uid=$(kctl -n "$ns" get pod/core-0 -o jsonpath='{.metadata.uid}')
-dotnet "$DEV_ROOT/tests/P0.E2E/bin/Debug/net10.0/P0.E2E.dll" fresh "$DEV_STATE" "$artifacts" lifecycle 2>&1 | guard redact "$DEV_STATE"
+dotnet "$DEV_ROOT/tests/P0.E2E/bin/Debug/net10.0/P0.E2E.dll" fresh "$DEV_STATE" "$artifacts" lifecycle-pod-network 2>&1 | guard redact "$DEV_STATE"
 kill "$core_forward" 2>/dev/null || true
 wait "$core_forward" 2>/dev/null || true
 core_forward=''

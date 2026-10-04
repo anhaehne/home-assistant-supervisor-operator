@@ -23,7 +23,12 @@ spec:
       {{- end }}
       serviceAccountName: supervisor
       automountServiceAccountToken: true
-      securityContext: {runAsUser: 1654, runAsGroup: 1654, fsGroup: 1654}
+      securityContext:
+        runAsUser: 1654
+        runAsGroup: 1654
+        fsGroup: 1654
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
       containers:
         - name: supervisor
           image: {{ required "operatorImage must identify your operator build" .Values.operatorImage | quote }}

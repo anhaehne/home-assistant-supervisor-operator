@@ -38,7 +38,11 @@ spec:
       serviceAccountName: supervisor-shutdown
       automountServiceAccountToken: true
       restartPolicy: Never
-      securityContext: {runAsUser: 1654, runAsGroup: 1654}
+      securityContext:
+        runAsUser: 1654
+        runAsGroup: 1654
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
       containers:
         - name: shutdown
           image: {{ .Values.operatorImage | quote }}

@@ -14,6 +14,7 @@ public static class LifecycleRegistration
             throw new InvalidOperationException("Run the disposable framework probe separately from the installed lifecycle operator.");
         services.AddSingleton(_ => KubernetesClientConfiguration.InClusterConfig());
         services.AddSingleton(new Installation(ns));
+        services.AddSingleton<PodNetworkDiscovery>();
         services.AddSingleton<CoreLifecycle>();
         services.AddKubernetesOperator(settings =>
         {

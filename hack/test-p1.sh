@@ -8,7 +8,10 @@ artifacts=${1:?Provide the suite artifact directory}
 exec 9>&-
 "$DEV_ROOT/hack/dev-install.sh"
 "$DEV_ROOT/hack/test-lifecycle.sh" "$artifacts/p1"
+"$DEV_ROOT/hack/test-pod-network-proxy.sh" "$artifacts/p1"
+"$DEV_ROOT/hack/test-ingress-proxy.sh" "$artifacts/p1"
 "$DEV_ROOT/hack/test-upgrades.sh" "$artifacts/p1"
 "$DEV_ROOT/hack/test-dependency-recovery.sh" "$artifacts/p1"
 "$DEV_ROOT/hack/test-node-fault.sh" "$artifacts/p1"
 "$DEV_ROOT/hack/test-api-recovery.sh" "$artifacts/p1"
+"$DEV_ROOT/hack/test-ingress-proxy.sh" "$artifacts/p1" fresh

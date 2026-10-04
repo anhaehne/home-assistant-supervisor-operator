@@ -3,6 +3,11 @@ kind: HomeAssistantInstance
 metadata:
   name: home-assistant
 spec:
+  trustPodNetwork: {{ include "haso.trustPodNetwork" . }}
+  {{- if ne .Values.ingress.trustedProxies nil }}
+  httpProxy:
+    trustedProxies: {{ .Values.ingress.trustedProxies | toJson }}
+  {{- end }}
   desiredState: Running
   ownership: {{ .Values.ownership | quote }}
   options: {timezone: UTC, country: US, port: 80, ssl: false, diagnostics: false}

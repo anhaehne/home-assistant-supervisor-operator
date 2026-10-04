@@ -5,3 +5,9 @@ ownership: Ui
 # Optional: set ownership: GitOps when the instance spec is managed by GitOps.
 # Application images default to the references embedded in this artifact's chart.
 # No credentials belong in this file; the Secret needs core-token and gateway-token.
+
+# Recommended: trust discovered Kubernetes Pod networks for ingress proxies.
+# Requires authoritative Node Pod CIDRs; every Pod in those ranges can set client addresses.
+ingress:
+  trustPodNetwork: true
+  trustedProxies: null

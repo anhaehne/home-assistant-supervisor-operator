@@ -18,10 +18,11 @@ if (args is ["browser-smoke"])
 }
 
 if (args.Length is < 3 or > 4 || args[0] is not ("fresh" or "existing"))
-    throw new ArgumentException("Usage: P0.E2E fresh|existing STATE_DIRECTORY ARTIFACT_DIRECTORY [default|http-migration]");
+    throw new ArgumentException("Usage: P0.E2E fresh|existing STATE_DIRECTORY ARTIFACT_DIRECTORY [default|http-migration|lifecycle|lifecycle-pod-network]");
 var mode = args[0];
 var httpMigration = args.Length == 4 && args[3] == "http-migration";
-var lifecycle = args.Length == 4 && args[3] == "lifecycle";
+var podNetworkTrust = args.Length == 4 && args[3] == "lifecycle-pod-network";
+var lifecycle = args.Length == 4 && args[3] is "lifecycle" or "lifecycle-pod-network";
 var state = Path.GetFullPath(args[1]);
 var artifacts = Path.GetFullPath(args[2]);
 Directory.CreateDirectory(artifacts);
@@ -82,7 +83,7 @@ try
     var settings = http.GetProperty(migrationTrial ? "pending" : "stable");
     Require(settings.GetProperty("server_port").GetInt32() == 80, "Native HTTP port is incorrect");
     var proxiesEnabled = settings.TryGetProperty("use_x_forwarded_for", out var forwarded) && forwarded.GetBoolean();
-    Require(proxiesEnabled == httpMigration, "Native trusted-proxy settings changed");
+    Require(proxiesEnabled == (httpMigration || podNetworkTrust), "Native trusted-proxy settings changed");
     var transfer = await page.EvaluateAsync<JsonElement>("""
         async () => {
             const hass = document.querySelector('home-assistant').hass;

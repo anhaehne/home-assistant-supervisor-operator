@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "trustPodNetwork": {"type": "boolean"},
+        "trustedProxies": {
+          "type": ["array", "null"],
+          "maxItems": 128,
+          "items": {"type": "string", "minLength": 1, "maxLength": 100}
+        }
+      }
+    }
+  }
+}

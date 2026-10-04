@@ -1,14 +1,14 @@
 # Release procedure
 
-Use Semantic Versioning. The next P1 preview is `v0.1.0-alpha.2`; `v0.1.0-alpha.1` remains unchanged. Use a new tag for every correction; never move or reuse a published tag.
+Use Semantic Versioning. The next P1 preview is `v0.1.0-alpha.3`; earlier tags and artifacts remain unchanged. Use a new tag for every correction; never move or reuse a published tag.
 
 1. Complete the full isolated P1 suite for the application source being released, with successful teardown. Packaging-only changes require packaging checks and the published-artifact installation check below.
 2. Commit and push the release changes. Wait for the Deployment artifacts workflow on that commit to pass.
 3. Create an annotated tag on the accepted commit and push it:
 
    ```sh
-   git tag -a v0.1.0-alpha.2 ACCEPTED_COMMIT -m 'P1 scheduler placement preview v0.1.0-alpha.2'
-   git push origin v0.1.0-alpha.2
+   git tag -a v0.1.0-alpha.3 ACCEPTED_COMMIT -m 'P1 managed ingress proxy preview v0.1.0-alpha.3'
+   git push origin v0.1.0-alpha.3
    ```
 
 4. The tag workflow runs unit tests, builds and publishes operator/gateway images and the Helm chart, verifies the manifest bundle and creates a draft GitHub prerelease with checksummed assets. Image references in the chart are pinned by digest.
@@ -33,3 +33,9 @@ The published chart installed in a fresh guarded two-node Kubernetes 1.37.0 kind
 The alpha.2 chart and both digest-pinned application images downloaded anonymously. Release asset and internal bundle checksums passed, and the registry chart matched its release attachment byte-for-byte. A fresh guarded two-node kind installation used chart image defaults without node or application image overrides; instance reconciliation and socket health succeeded, and the native frontend responded after following its onboarding redirect. Graceful uninstall retained the same bound PVC. Cleanup removed both nodes, node data volumes, the shared test volume and local state. Evidence is `.test-artifacts/release-alpha-2/result.json` (exit zero, complete teardown) and `.test-artifacts/release-alpha-2-install-rerun.log`. The earlier `.test-artifacts/release-alpha-2-first-check/` failed because the frontend check did not follow redirects; it cleaned up and does not count as acceptance.
 
 The GitHub prerelease remains a draft ready for publication review; the chart and images are available from GHCR. Cross-node acceptance uses shared test storage and does not validate production CSI attachment, hardware or LAN portability. The P1 preview still excludes add-on lifecycle, backups and Core updates.
+
+## Third prerelease candidate
+
+`v0.1.0-alpha.3` adds managed native HTTP reverse-proxy configuration, including updates on previously initialized PVCs, and recommends `ingress.trustPodNetwork: true` by default. The operator discovers Node Pod CIDRs, grants its ServiceAccount read-only get/list Node access, and updates trusted networks through fenced Core replacement and native trial confirmation. Trust covers every Pod in those networks; Node CIDRs must be authoritative for the CNI and cover ingress peer addresses. Disable discovery and supply explicit proxy addresses for narrower trust, external/host-network peers or unsupported CNI configurations. Review and apply both updated CRDs before upgrading. Supervisor and shutdown-hook workloads now explicitly configure non-root execution and RuntimeDefault seccomp; this does not establish restricted PodSecurity compatibility for all workloads.
+
+Source acceptance completed on 2026-10-04 in `.test-artifacts/p0.wOQyrQ/` with exit zero and complete teardown. The final supplementary unit regression run passed 172 tests with no failures or skips. Real forwarded traffic, discovered-network additions/removals, native promotion, explicit-list changes/revocation, existing/fresh PVCs and the other P0/P1 gates passed. Independent review found no remaining P3-or-higher issues. Published alpha.3 artifact download and fresh-installation acceptance remain pending; do not publish the draft until those checks pass.

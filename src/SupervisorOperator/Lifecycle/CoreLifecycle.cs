@@ -5,12 +5,13 @@ using k8s;
 using k8s.Autorest;
 using k8s.Models;
 using KubeOps.KubernetesClient;
+using Supervisor.Contracts;
 
 namespace SupervisorOperator.Lifecycle;
 
 // All mutations target the installation's fixed singleton. No caller supplies
 // a Kubernetes object name, namespace, image, node, or exec command.
-public sealed class CoreLifecycle(IKubernetesClient client, Installation installation, GatewayClient gateway, IConfiguration configuration)
+public sealed class CoreLifecycle(IKubernetesClient client, Installation installation, GatewayClient gateway, IConfiguration configuration, PodNetworkDiscovery? discovery = null)
 {
     public const string Owner = "ha-operator.io/instance-uid";
     public const string Fence = "ha-operator.io/generation";
@@ -29,6 +30,14 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
         {
             var instance = await Instance(cancellation) ?? throw new ApiValidationException("The instance is unavailable");
             if (instance.Metadata.DeletionTimestamp is not null) throw new ApiValidationException("The instance is being removed");
+            if (action == "Restart" && requestKey is null && instance.Spec.DesiredState == "Running" && ManagedProxy(instance))
+            {
+                var applying = await client.GetAsync<HomeAssistantOperation>(CommandId(instance), installation.Namespace, cancellation);
+                // The native callback also occurs under GitOps ownership. It
+                // joins this durable operation without changing GitOps intent.
+                if (applying?.Spec.TargetUid == instance.Metadata.Uid && applying.Status.HttpProxyFingerprint is not null && !applying.Status.Terminal)
+                    return applying.Spec.Id;
+            }
             if (instance.Spec.Ownership == "GitOps") throw new ApiValidationException("Core lifecycle is managed by GitOps; change the instance specification");
             if (requestKey is not null)
             {
@@ -54,7 +63,7 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
                 throw new ApiValidationException("Another Core operation is in progress");
             }
             var id = Guid.NewGuid().ToString("N");
-            instance.Spec.Command = new CoreCommand { Id = id, Action = action, RequestKey = requestKey };
+            instance.Spec.Command = new CoreCommand { Id = id, Action = action, RequestKey = requestKey, AcceptedGeneration = (instance.Metadata.Generation ?? 1) + 1 };
             instance.Spec.DesiredState = action == "Stop" ? "Stopped" : "Running";
             try
             {
@@ -98,8 +107,83 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
     public async Task<IReadOnlyList<HomeAssistantOperation>> Operations(CancellationToken cancellation) =>
         (await client.ListAsync<HomeAssistantOperation>(installation.Namespace, cancellationToken: cancellation)).OrderByDescending(op => op.Spec.CreatedAt).ToArray();
 
-    public static string CommandId(HomeAssistantInstance instance) => (instance.Spec.Ownership == "Ui" ? instance.Spec.Command?.Id : null) ??
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{instance.Metadata.Uid}:{instance.Metadata.Generation}:{instance.Spec.DesiredState}")))[..32].ToLowerInvariant();
+    public static string CommandId(HomeAssistantInstance instance)
+    {
+        if (instance.Spec.Ownership == "Ui" && instance.Spec.Command is { } command)
+        {
+            if (command.AcceptedGeneration == instance.Metadata.Generation &&
+                (instance.Status.ProxyCommandId != command.Id || instance.Status.ProxyCommandNetworkRevision == instance.Status.PodNetworkRevision) ||
+                !ManagedProxy(instance) && !instance.Status.HasManagedHttpProxy)
+                return command.Id;
+            // Each managed specification generation is a distinct intent, including
+            // policy rollbacks and releasing management. Never revive an older job.
+        }
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{instance.Metadata.Uid}:{instance.Metadata.Generation}:{instance.Spec.DesiredState}" + (instance.Status.PodNetworkRevision == 0 ? "" : $":pod-network:{instance.Status.PodNetworkRevision}"))))[..32].ToLowerInvariant();
+    }
+
+    private static bool ManagedProxy(HomeAssistantInstance instance) => instance.Spec.TrustPodNetwork || instance.Spec.HttpProxy is not null;
+
+    private async Task<bool> RefreshPodNetwork(HomeAssistantInstance instance, CancellationToken cancellation)
+    {
+        string[] networks;
+        try
+        {
+            networks = instance.Spec.TrustPodNetwork
+                ? instance.Spec.DesiredState == "Stopped" ? instance.Status.DiscoveredPodNetworks ?? []
+                    : await (discovery ?? new PodNetworkDiscovery(client)).Resolve(cancellation)
+                : [];
+            // Validate the complete union before changing any durable intent.
+            if (instance.Spec.DesiredState != "Stopped")
+                HttpProxyValidation.Normalize((instance.Spec.HttpProxy?.TrustedProxies ?? []).Concat(networks).ToArray());
+        }
+        catch (Exception exception) when (!cancellation.IsCancellationRequested &&
+            exception is InvalidOperationException or ArgumentException or HttpOperationException or HttpRequestException or TaskCanceledException)
+        {
+            await Condition(instance, "PodNetworkUnavailable", "Cannot discover usable Pod networks; verify node Pod CIDRs and node-read permissions, or disable trustPodNetwork and supply explicit trusted proxies", cancellation);
+            return false;
+        }
+        var changed = !(instance.Status.DiscoveredPodNetworks ?? []).SequenceEqual(networks);
+        if (changed && instance.Spec.TrustPodNetwork)
+        {
+            var active = await client.GetAsync<HomeAssistantOperation>(CommandId(instance), installation.Namespace, cancellation);
+            if (active?.Spec.TargetUid == instance.Metadata.Uid && active.Spec.TargetGeneration == instance.Metadata.Generation &&
+                active.Status.HttpProxyFingerprint is not null && !active.Status.Terminal)
+            {
+                // Finish the already accepted native trial before processing a
+                // later topology change. It must not become an unrelated pending trial.
+                networks = instance.Status.DiscoveredPodNetworks ?? [];
+                changed = false;
+            }
+        }
+        if (changed)
+        {
+            instance.Status.DiscoveredPodNetworks = networks;
+            instance.Status.PodNetworkRevision = checked(instance.Status.PodNetworkRevision + 1);
+            instance.Status.Conditions = [new V1Condition { Type = "Ready", Status = "False", Reason = "PodNetworkChanged",
+                Message = "Discovered Pod networks changed; waiting for native HTTP configuration to converge",
+                ObservedGeneration = instance.Metadata.Generation, LastTransitionTime = DateTime.UtcNow }];
+        }
+        if (ManagedProxy(instance) && !instance.Status.HasManagedHttpProxy)
+        {
+            instance.Status.HasManagedHttpProxy = true;
+            changed = true;
+        }
+        if (instance.Spec.Command is { } command && command.AcceptedGeneration == instance.Metadata.Generation &&
+            instance.Status.ProxyCommandId != command.Id && ManagedProxy(instance))
+        {
+            // Bind a newly accepted API command to the first discovered snapshot.
+            // Discovery between acceptance and reconciliation cannot lose its ID.
+            instance.Status.ProxyCommandId = command.Id;
+            instance.Status.ProxyCommandNetworkRevision = instance.Status.PodNetworkRevision;
+            changed = true;
+        }
+        if (changed)
+        {
+            var updated = await client.UpdateStatusAsync(instance, cancellation);
+            instance.Metadata = updated.Metadata;
+        }
+        return true;
+    }
 
     public static bool CompletionPublished(HomeAssistantInstance instance, HomeAssistantOperation operation) =>
         operation.Spec.TargetUid == instance.Metadata.Uid && operation.Status.Phase == "Succeeded" &&
@@ -114,6 +198,11 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
     {
         if (instance.Metadata.Name != HomeAssistantInstance.ResourceName || instance.Metadata.NamespaceProperty != installation.Namespace)
             throw new InvalidOperationException("Instance identity is outside this installation");
+        if (instance.Spec.DesiredState != "Stopped" && instance.Spec.HttpProxy is { } explicitProxy)
+            HttpProxyValidation.Normalize(explicitProxy.TrustedProxies);
+        if (!await RefreshPodNetwork(instance, cancellation)) return;
+        var proxySettings = ManagedProxy(instance) && instance.Spec.DesiredState != "Stopped" ? new HttpProxySettings(HttpProxyValidation.Normalize(
+            (instance.Spec.HttpProxy?.TrustedProxies ?? []).Concat(instance.Status.DiscoveredPodNetworks ?? []).ToArray())) : null;
         var id = CommandId(instance);
         foreach (var previous in (await Operations(cancellation)).Where(op => op.Spec.TargetUid == instance.Metadata.Uid && op.Spec.Id != id && !op.Status.Terminal))
         {
@@ -126,9 +215,9 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
             operation = new HomeAssistantOperation
             {
                 Metadata = new V1ObjectMeta { Name = id, NamespaceProperty = installation.Namespace,
-                    Annotations = instance.Spec.Ownership == "Ui" && instance.Spec.Command?.RequestKey is { } key ? new Dictionary<string, string> { ["ha-operator.io/request-key"] = key } : null },
+                    Annotations = instance.Spec.Ownership == "Ui" && instance.Spec.Command?.Id == id && instance.Spec.Command.RequestKey is { } key ? new Dictionary<string, string> { ["ha-operator.io/request-key"] = key } : null },
                 Spec = new OperationSpec { Id = id, TargetUid = instance.Metadata.Uid, TargetGeneration = instance.Metadata.Generation ?? 1,
-                    Action = instance.Spec.Ownership == "Ui" ? instance.Spec.Command?.Action ?? "Reconcile" : "Reconcile", DesiredState = instance.Spec.DesiredState, CreatedAt = DateTimeOffset.UtcNow }
+                    Action = instance.Spec.Ownership == "Ui" && instance.Spec.Command?.Id == id ? instance.Spec.Command.Action : "Reconcile", DesiredState = instance.Spec.DesiredState, CreatedAt = DateTimeOffset.UtcNow }
             };
             operation = await client.CreateAsync(operation, cancellation);
         }
@@ -160,6 +249,14 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
                 return;
             }
         }
+        if (instance.Spec.TrustPodNetwork && instance.Spec.DesiredState != "Stopped" &&
+            !(operation.Status.HttpProxyFingerprint is not null && !operation.Status.Terminal) &&
+            pod?.Status?.PodIP is { Length: > 0 } podAddress &&
+            !(instance.Status.DiscoveredPodNetworks ?? []).Any(network => System.Net.IPNetwork.Parse(network).Contains(IPAddress.Parse(podAddress))))
+        {
+            await Condition(instance, "PodNetworkUnavailable", "Declared Node Pod CIDRs do not cover the Core Pod address; disable trustPodNetwork and supply the authoritative CNI network or explicit proxy addresses", cancellation);
+            return;
+        }
         var template = await Template(instance, cancellation);
         var templateChanged = stateful is not null &&
             (stateful.Metadata.Annotations?.TryGetValue(TemplateHash, out var appliedHash) != true || appliedHash != template.Metadata.Annotations[TemplateHash] ||
@@ -183,6 +280,13 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
                 await Phase(operation, "Starting", cancellation);
                 await Project(instance, operation, pod, cancellation);
             }
+            else if (instance.Spec.DesiredState == "Running" && ManagedProxy(instance))
+            {
+                // Helm changes on a retained PVC must configure the live native
+                // HTTP store, not rewrite YAML that Core has already imported.
+                await ProxyConfiguration(instance, operation, pod!, proxySettings!, cancellation);
+                await Project(instance, operation, pod, cancellation);
+            }
             else await Project(instance, operation, pod, cancellation);
             await Prune(id, cancellation);
             return;
@@ -191,6 +295,37 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
         {
             var needsStop = operation.Spec.Action == "Restart" || instance.Spec.DesiredState == "Stopped" || templateChanged;
             await Phase(operation, needsStop ? "Stopping" : "Starting", cancellation);
+            return;
+        }
+        if (operation.Status.Phase == "ApplyingHttpConfiguration")
+        {
+            if (!ManagedProxy(instance))
+            {
+                await Phase(operation, "WaitingForHealth", cancellation);
+            }
+            else
+            {
+                var currentProxy = await gateway.HttpProxy("status", proxySettings!, null, cancellation);
+                if (!currentProxy.PendingExists && currentProxy.DesiredFingerprint != operation.Status.HttpProxyFingerprint)
+                {
+                    // No trial exists yet. Preserve any newer user HTTP settings
+                    // in the snapshot before making the first native write.
+                    operation.Status.HttpProxyFingerprint = currentProxy.DesiredFingerprint;
+                    await Phase(operation, "ApplyingHttpConfiguration", cancellation);
+                    return;
+                }
+                var proxy = await gateway.HttpProxy("stage", proxySettings!, null, cancellation);
+                if (proxy.StableMatches && !proxy.PendingExists)
+                {
+                    operation.Status.HttpProxyFingerprint = null;
+                    operation.Status.HttpProxyStagedPodUid = null;
+                    await Phase(operation, "WaitingForHealth", cancellation);
+                }
+                else if (!proxy.PendingMatches || proxy.PendingError || proxy.PendingFingerprint != operation.Status.HttpProxyFingerprint)
+                    await Condition(instance, "HttpProxyConflict", "Native HTTP settings changed during proxy configuration; no trial will be promoted", cancellation);
+                else await Phase(operation, "Stopping", cancellation);
+            }
+            await ProjectUnlessBlocked(instance, operation, pod, cancellation);
             return;
         }
         if (operation.Status.Phase == "Stopping")
@@ -228,7 +363,10 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
                 {
                     var core = await gateway.Read<System.Text.Json.JsonElement>("/core/config", cancellation);
                     if (core.TryGetProperty("state", out var state) && state.GetString() == "RUNNING")
-                        await Phase(operation, "Succeeded", cancellation);
+                    {
+                        if (!ManagedProxy(instance)) await Phase(operation, "Succeeded", cancellation);
+                        else await ProxyConfiguration(instance, operation, pod!, proxySettings!, cancellation);
+                    }
                 }
                 catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException && !cancellation.IsCancellationRequested) { }
             }
@@ -241,6 +379,56 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
         await Project(instance, operation, pod, cancellation);
         await Prune(operation.Spec.Id, cancellation);
     }
+
+    private async Task ProxyConfiguration(HomeAssistantInstance instance, HomeAssistantOperation operation, V1Pod pod, HttpProxySettings proxySettings, CancellationToken cancellation)
+    {
+        var core = await gateway.Read<System.Text.Json.JsonElement>("/core/config", cancellation);
+        if (!core.TryGetProperty("state", out var state) || state.GetString() != "RUNNING")
+        {
+            await Phase(operation, "WaitingForHealth", cancellation);
+            return;
+        }
+        var proxy = await gateway.HttpProxy("status", proxySettings, null, cancellation);
+        if (proxy.StableMatches && !proxy.PendingExists)
+        {
+            var needsCompletion = !operation.Status.Terminal || operation.Status.HttpProxyFingerprint is not null || operation.Status.HttpProxyStagedPodUid is not null;
+            operation.Status.HttpProxyFingerprint = null;
+            operation.Status.HttpProxyStagedPodUid = null;
+            if (needsCompletion) await Phase(operation, "Succeeded", cancellation);
+            return;
+        }
+        if (operation.Status.HttpProxyFingerprint is null)
+        {
+            if (proxy.PendingExists && (!proxy.PendingMatches || proxy.PendingError))
+                throw new InvalidOperationException("An unrelated native HTTP configuration trial is pending");
+            operation.Status.HttpProxyFingerprint = proxy.DesiredFingerprint;
+            operation.Status.HttpProxyStagedPodUid = pod.Metadata.Uid;
+            operation.Status.StartedAt = DateTimeOffset.UtcNow;
+            // Persist restart ownership before configure invokes the native
+            // Supervisor restart callback or the gateway response is lost.
+            await Phase(operation, "ApplyingHttpConfiguration", cancellation);
+            return;
+        }
+        if (pod.Metadata.Uid == operation.Status.HttpProxyStagedPodUid)
+        {
+            // A lost stage response is recovered by retrying the idempotent
+            // native command, then proceeding through ordinary termination.
+            await Phase(operation, "ApplyingHttpConfiguration", cancellation);
+            return;
+        }
+        if (!proxy.PendingMatches || !proxy.PendingActive || proxy.PendingError ||
+            proxy.PendingFingerprint != operation.Status.HttpProxyFingerprint)
+            throw new InvalidOperationException("Replacement Core did not activate the expected native HTTP trial");
+        var confirmed = await gateway.HttpProxy("confirm", proxySettings, operation.Status.HttpProxyFingerprint, cancellation);
+        if (!confirmed.StableMatches || confirmed.PendingExists)
+            throw new InvalidOperationException("Native HTTP settings were not confirmed");
+        operation.Status.HttpProxyFingerprint = null;
+        operation.Status.HttpProxyStagedPodUid = null;
+        await Phase(operation, "Succeeded", cancellation);
+    }
+
+    private Task ProjectUnlessBlocked(HomeAssistantInstance instance, HomeAssistantOperation operation, V1Pod? pod, CancellationToken cancellation) =>
+        instance.Status.Conditions.FirstOrDefault()?.Reason == "HttpProxyConflict" ? Task.CompletedTask : Project(instance, operation, pod, cancellation);
 
     private async Task<V1StatefulSet> Template(HomeAssistantInstance instance, CancellationToken cancellation)
     {
@@ -307,7 +495,7 @@ public sealed class CoreLifecycle(IKubernetesClient client, Installation install
         if (instance.Status.State == state && instance.Status.OperationId == operation.Spec.Id &&
             instance.Status.ObservedGeneration == instance.Metadata.Generation && instance.Status.PodUid == pod?.Metadata.Uid &&
             instance.Status.Conditions.FirstOrDefault()?.Reason == reason) return;
-        instance.Status = new InstanceStatus { State = state, OperationId = operation.Spec.Id, ObservedGeneration = instance.Metadata.Generation ?? 1,
+        instance.Status = new InstanceStatus { ProxyCommandId = instance.Status.ProxyCommandId, ProxyCommandNetworkRevision = instance.Status.ProxyCommandNetworkRevision, PodNetworkRevision = instance.Status.PodNetworkRevision, DiscoveredPodNetworks = instance.Status.DiscoveredPodNetworks, HasManagedHttpProxy = instance.Status.HasManagedHttpProxy, State = state, OperationId = operation.Spec.Id, ObservedGeneration = instance.Metadata.Generation ?? 1,
             PodUid = pod?.Metadata.Uid, Conditions = [new V1Condition { Type = "Ready", Status = healthy ? "True" : "False",
                 Reason = reason, Message = operation.Status.Error ?? $"Core lifecycle: {reason}",
                 ObservedGeneration = instance.Metadata.Generation, LastTransitionTime = DateTime.UtcNow }] };

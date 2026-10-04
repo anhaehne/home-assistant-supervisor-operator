@@ -25,7 +25,15 @@ The chart uses immutable operator/gateway image digests listed in images.yaml. F
 
 ## Changes
 
-Core no longer requires a selected node. Kubernetes schedules Core according to PVC topology. Recovery on another node requires accessible storage and verified termination of the old process. The isolated suite covers legacy selector removal and cross-node recovery with the same PVC/PV and retained configuration using shared test storage; production CSI behavior remains unvalidated.
+Managed reverse-proxy configuration now uses Core’s native HTTP API, including updates on an existing PVC whose HTTP settings were already migrated. The operator stages the change, gracefully replaces Core, verifies the active trial and confirms it without editing Core’s private storage. Let the operator exclusively manage native HTTP configuration while this setting is enabled.
+
+The recommended default \`ingress.trustPodNetwork: true\` discovers Node Pod CIDRs and automatically reconciles network membership changes. It grants the operator only get/list Node access, but trusts forwarded client addresses from every Pod in those ranges. Node CIDRs must be authoritative for your CNI and cover ingress peer addresses. For narrower trust, external/host-network ingress or CNI configurations without authoritative Node CIDRs, set \`ingress.trustPodNetwork: false\` and supply explicit \`ingress.trustedProxies\`. With discovery disabled, an empty list revokes trust and null releases management while retaining confirmed settings.
+
+Before upgrading, review and apply **both** updated instance and operation CRDs; Helm does not upgrade chart CRDs automatically. Use the matching operator and gateway images. Supervisor and shutdown-hook workloads now explicitly use non-root execution and RuntimeDefault seccomp; this does not establish restricted PodSecurity compatibility for all chart workloads.
+
+Core remains unpinned. Kubernetes schedules according to PVC topology; recovery on another node requires accessible storage and verified termination of the old process. Cross-node acceptance uses shared test storage and does not validate production CSI behavior.
+
+Source acceptance passed the fresh full isolated P0/P1 suite with successful teardown. The final unit regression run passed 172 tests with no failures or skips. Real proxy traffic, discovered-network additions/removals, native promotion, existing and fresh PVC configuration, explicit allowlist changes/revocation, lifecycle, upgrade and recovery gates passed; independent review found no remaining P3-or-higher issues.
 
 ## Acceptance before publication
 

@@ -17,7 +17,7 @@ flowchart LR
     Workload --> Core
     Options --> Intent
     Core --> Config[(Independently retained instance PVC)]
-    API -->|Fixed reads + gateway credential| Gateway[CoreGateway MVC controller]
+    API -->|Fixed Core access + gateway credential| Gateway[CoreGateway MVC controller]
     Gateway -->|Private Unix socket| Core
     API -->|Explicit namespace-scoped pods/exec| Metrics[Core cgroup and Pod counters]
 ```
@@ -56,6 +56,10 @@ In the installed P1 operator, `InstanceOptionsStore` uses resourceVersion-checke
 
 P1's combined API/operator Deployment uses `Recreate`; its controller owns one `OnDelete` Core StatefulSet with a gateway sidecar. Admission enforces the singleton across instance configurations, installations and scaling. API commands commit to the CR before HTTP waiting; operations recover after process interruption. Restart waits for the old Pod to disappear before starting Core, then verifies readiness and native socket application health. All workload writes carry instance UID, monotonic generation and resourceVersion fencing. Unreachable Pods block replacement. Kubernetes selects Core placement subject to the PVC topology; the operator supplies no Core node selector. Template upgrades stop Core before recreating immutable workloads. The gateway Service publishes not-ready addresses to avoid a startup readiness cycle.
 
+The chart defaults `ingress.trustPodNetwork` to true. The operator polls node Pod CIDRs through its singleton resync, requiring a conditional fixed ClusterRole/Binding with only get/list node access. The effective proxy list combines discovered networks with explicit `ingress.trustedProxies`; disabling discovery removes node-read permissions and allows an explicit allowlist, revocation with `[]`, or unmanaged native settings with `null`. Discovery requires authoritative node Pod CIDRs and never guesses private ranges. All workloads in the trusted Pod ranges can supply forwarded client addresses. The alpha.3 discovery default has passed isolated acceptance.
+
+Managed proxy trust uses three fixed, gateway-authenticated endpoints for status, staging and confirmation. The gateway translates them into stock Core's native HTTP WebSocket commands over the private Unix socket; caller-selected paths or commands remain prohibited. The lifecycle persists a fingerprint of the full HTTP trial before staging, joins Core's native restart callback to the existing job, waits for fenced replacement and application health, then promotes the matching active trial. Settings unrelated to proxy trust and configuration files are preserved. Native HTTP commands do not provide atomic compare-and-swap, so managed installations require exclusive native HTTP configuration ownership during convergence. Generation-based operation identity and retained management history prevent policy rollbacks from reviving failed jobs. See [configuration and upgrade requirements](p1-foundation.md#trusted-ingress-proxies).
+
 Jobs project bounded durable operation records; basic logs use fixed current Pod/container targets. The Core PVC has no CR owner reference and is kept by Helm. Finalization and the chart's pre-delete shutdown hook wait for graceful termination while retaining configuration. No controller force-deletes Pods or moves data to another node. Physical fencing remains an administrator responsibility.
 
 ## Credentials and isolation
@@ -80,4 +84,4 @@ The supported P0 deployment path is the guarded development runner: `dev-up.sh` 
 
 P0 closes with MVC controller-based HTTP services, the pinned compatibility inventory, architecture/contribution documentation and green native client/browser tests. The [development evidence](development.md#coverage-and-evidence) records 70 passing .NET tests, the fresh full E2E run, development-image checks and verified success/failure teardown.
 
-The P1 chart accepts administrator-supplied application image references, credentials and storage. Optional frontend ingress/TLS assumes an existing ingress controller and native Core trusted-proxy configuration. The public alpha release predates the removal of Core pinning; current source and subsequent artifacts allow scheduler-selected placement. See [installation, ownership and upgrade instructions](p1-foundation.md#installing-the-development-preview). Later milestones add add-on lifecycle, ingress authentication, backups and updates.
+The P1 chart accepts administrator-supplied application image references, credentials and storage. Optional frontend ingress/TLS assumes an existing ingress controller. The alpha.3 chart defaults to Pod-network trust and accepts additional `ingress.trustedProxies`, including when Gateway API routing is managed externally. Alpha.2 removed Core pinning; subsequent artifacts allow scheduler-selected placement. See [installation, ownership and upgrade instructions](p1-foundation.md#installing-the-development-preview). Later milestones add add-on lifecycle, ingress authentication, backups and updates.

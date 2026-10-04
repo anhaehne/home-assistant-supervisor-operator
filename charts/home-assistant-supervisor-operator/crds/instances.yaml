@@ -24,6 +24,15 @@ spec:
             spec:
               type: object
               properties:
+                trustPodNetwork: {type: boolean, default: false}
+                httpProxy:
+                  type: object
+                  required: [trustedProxies]
+                  properties:
+                    trustedProxies:
+                      type: array
+                      maxItems: 128
+                      items: {type: string, minLength: 1, maxLength: 100}
                 desiredState: {type: string, enum: [Running, Stopped], default: Running}
                 ownership: {type: string, enum: [Ui, GitOps], default: Ui}
                 command:
@@ -33,6 +42,7 @@ spec:
                     id: {type: string, pattern: '^[a-f0-9]{32}$'}
                     action: {type: string, enum: [Start, Stop, Restart]}
                     requestKey: {type: string, nullable: true, maxLength: 128}
+                    acceptedGeneration: {type: integer, format: int64, nullable: true, minimum: 1}
                 options:
                   type: object
                   default: {timezone: UTC, country: US, port: 80, ssl: false, diagnostics: false}
@@ -46,6 +56,14 @@ spec:
               type: object
               properties:
                 observedGeneration: {type: integer, format: int64}
+                hasManagedHttpProxy: {type: boolean}
+                discoveredPodNetworks:
+                  type: array
+                  nullable: true
+                  items: {type: string, minLength: 1, maxLength: 100}
+                proxyCommandId: {type: string, nullable: true, pattern: '^[a-f0-9]{32}$'}
+                proxyCommandNetworkRevision: {type: integer, format: int64, minimum: 0}
+                podNetworkRevision: {type: integer, format: int64, minimum: 0}
                 operationId: {type: string, nullable: true}
                 state: {type: string, enum: [Unknown, Running, Stopped, Starting]}
                 podUid: {type: string, nullable: true}

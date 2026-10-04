@@ -25,11 +25,11 @@ dotnet test --no-restore
 
 ## Get started with Helm
 
-The `0.1.0-alpha.2` release candidate removes Core node pinning: Kubernetes selects placement using the PVC topology. The tag workflow publishes chart/image artifacts and prepares a draft GitHub prerelease; see the [release procedure](packaging/RELEASING.md) for acceptance and publication status. Cross-node recovery requires storage accessible on the replacement node and verified termination of the previous Core process. The previous `0.1.0-alpha.1` release still requires `selectedNode`.
+The `0.1.0-alpha.3` release candidate adds managed reverse-proxy configuration and recommended automatic trust of Kubernetes Pod networks. Core remains unpinned: Kubernetes selects placement using the PVC topology. The tag workflow publishes chart/image artifacts and prepares a draft GitHub prerelease; see the [release procedure](packaging/RELEASING.md) for acceptance and publication status. Cross-node recovery requires storage accessible on the replacement node and verified termination of the previous Core process. The previous `0.1.0-alpha.1` release still requires `selectedNode`.
 
-The `0.1.0-alpha.2` chart includes public, digest-pinned operator and gateway images. You do not need to build images yourself. This is the P1 development preview: only Kubernetes 1.37.0 on linux/amd64 has been validated; add-on management, Core updates and backups/restores remain later work.
+The `0.1.0-alpha.3` chart uses digest-pinned operator and gateway images. Anonymous download and installation acceptance of the published candidate artifacts must pass before the GitHub prerelease is published; see the release procedure for evidence. You do not need to build images yourself. This is the P1 development preview: only Kubernetes 1.37.0 on linux/amd64 has been validated; add-on management, Core updates and backups/restores remain later work.
 
-You need Helm 3, kubectl, OpenSSL, schedulable Linux amd64 nodes, and a working StorageClass. Your installation account must be able to create CRDs and cluster admission policies. The chart supports one installation per cluster; storage topology determines which nodes can run Core.
+You need Helm 3, kubectl, OpenSSL, schedulable Linux amd64 nodes, and a working StorageClass. Your installation account must be able to create CRDs, cluster admission policies, and the Node-read ClusterRole/Binding used by the recommended default. The chart supports one installation per cluster; storage topology determines which nodes can run Core.
 
 Choose your cluster context and StorageClass. Replace the example values below:
 
@@ -65,7 +65,7 @@ Install the pinned prerelease, then wait for Core's application health. Helm's r
 ```sh
 helm upgrade --install haso \
   oci://ghcr.io/anhaehne/home-assistant-supervisor-operator/charts/home-assistant-supervisor-operator \
-  --version 0.1.0-alpha.2 \
+  --version 0.1.0-alpha.3 \
   --kube-context "$KUBE_CONTEXT" --namespace home-assistant \
   --set-string storageClassName="$STORAGE_CLASS" \
   --set-string credentialsSecret=credentials \
@@ -84,7 +84,16 @@ kubectl --context "$KUBE_CONTEXT" --namespace home-assistant port-forward \
 
 Visit <http://127.0.0.1:8123> and complete native onboarding. Keep the port-forward running while using the frontend. Expose the `core` Service for permanent access; the Supervisor and gateway Services are internal APIs. See [the installation guide](docs/p1-foundation.md#installing-the-development-preview) for ingress and GitOps ownership options.
 
-To uninstall, use `helm --kube-context "$KUBE_CONTEXT" uninstall haso --namespace home-assistant --wait --timeout 10m`. The shutdown hook stops Core gracefully and retains the `instance-data` PVC. Keep the namespace and credentials Secret if you intend to reinstall with the same release and storage. For chart upgrades, review and apply CRDs separately first; Helm does not upgrade CRDs from the chart's `crds/` directory. See [the artifact guide](packaging/README.md#helm) for details.
+The alpha.3 candidate defaults to `ingress.trustPodNetwork: true`, discovering and trusting all Kubernetes node Pod CIDRs for forwarded requests. This requires read-only node access and grants every Pod in those ranges permission to supply client addresses. Node CIDRs must be authoritative for your CNI and cover the ingress peer addresses; external or host-network proxies require explicit trusted addresses. The new default and managed native HTTP updates on existing PVCs passed isolated acceptance; alpha.2 does not support these settings. See [proxy configuration and upgrades](docs/p1-foundation.md#trusted-ingress-proxies) for requirements and retained PVCs. To limit trust to explicit ingress proxy addresses instead, disable discovery:
+
+```yaml
+ingress:
+  trustPodNetwork: false
+  trustedProxies:
+    - 10.0.0.5/32
+```
+
+To uninstall, use `helm --kube-context "$KUBE_CONTEXT" uninstall haso --namespace home-assistant --wait --timeout 10m`. The shutdown hook stops Core gracefully and retains the `instance-data` PVC. Keep the namespace and credentials Secret if you intend to reinstall with the same release and storage. For chart upgrades, review and apply both updated instance and operation CRDs separately first; Helm does not upgrade CRDs from the chart's `crds/` directory. See [the artifact guide](packaging/README.md#helm) for details.
 
 ## Deployment artifacts
 

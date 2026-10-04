@@ -11,6 +11,10 @@ credentialsSecret: credentials
 storageClassName: ''
 storageSize: 1Gi
 ingress:
+  # Discover and trust every node's Pod CIDRs. Requires read-only node access.
+  trustPodNetwork: true
+  # Additional proxies; with trustPodNetwork false, null is unmanaged and [] revokes trust.
+  trustedProxies: null
   enabled: false
   className: ''
   host: ''

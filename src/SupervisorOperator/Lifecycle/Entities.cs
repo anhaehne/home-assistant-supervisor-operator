@@ -1,5 +1,6 @@
 using k8s.Models;
 using KubeOps.Abstractions.Entities;
+using Supervisor.Contracts;
 
 namespace SupervisorOperator.Lifecycle;
 
@@ -17,6 +18,8 @@ public sealed class InstanceSpec
     public string Ownership { get; set; } = "Ui";
     public InstanceOptions Options { get; set; } = new(Country: "US");
     public CoreCommand? Command { get; set; }
+    public HttpProxySettings? HttpProxy { get; set; }
+    public bool TrustPodNetwork { get; set; }
 }
 
 public sealed class CoreCommand
@@ -24,11 +27,17 @@ public sealed class CoreCommand
     public string Id { get; set; } = "";
     public string Action { get; set; } = "Reconcile";
     public string? RequestKey { get; set; }
+    public long? AcceptedGeneration { get; set; }
 }
 
 public sealed class InstanceStatus
 {
     public long ObservedGeneration { get; set; }
+    public bool HasManagedHttpProxy { get; set; }
+    public long PodNetworkRevision { get; set; }
+    public string? ProxyCommandId { get; set; }
+    public long ProxyCommandNetworkRevision { get; set; }
+    public string[]? DiscoveredPodNetworks { get; set; }
     public string? OperationId { get; set; }
     public string State { get; set; } = "Unknown";
     public string? PodUid { get; set; }
@@ -57,6 +66,8 @@ public sealed class OperationStatus
     public string? Error { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
+    public string? HttpProxyFingerprint { get; set; }
+    public string? HttpProxyStagedPodUid { get; set; }
     [System.Text.Json.Serialization.JsonIgnore]
     public bool Terminal => Phase is "Succeeded" or "Failed";
 }

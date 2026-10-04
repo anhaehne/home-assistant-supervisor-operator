@@ -12,6 +12,8 @@ helm upgrade --install haso ./chart.tgz --namespace home-assistant \
   --set-string credentialsSecret=credentials --wait --timeout 10m
 ```
 
+The recommended default `ingress.trustPodNetwork: true` discovers Node Pod CIDRs and configures native HTTP proxy trust. It grants the operator read-only get/list access to Nodes and trusts forwarded client addresses from every Pod in those ranges. If the CNI does not publish authoritative Node CIDRs, or the proxy uses an external/host-network address, set `ingress.trustPodNetwork: false` and supply `ingress.trustedProxies` explicitly. With discovery disabled, `[]` revokes proxy trust and `null` leaves confirmed native settings unmanaged. Avoid simultaneous native HTTP configuration edits while the operator manages this setting.
+
 For chart upgrades, review and apply `crds.yaml` separately first: Helm does not upgrade CRDs from its `crds/` directory. The chart is a singleton installation with fixed admission policy names. Choose one deployment manager; switching between Helm and raw manifests needs an explicit ownership migration.
 
 ## kubectl or GitOps
