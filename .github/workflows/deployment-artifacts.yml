@@ -14,10 +14,16 @@ concurrency:
   group: deployment-artifacts-${{ github.ref }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
     permissions:
       contents: read
       packages: write
@@ -153,3 +159,25 @@ jobs:
           name: unit-test-results
           path: .artifacts/unit/
           if-no-files-found: warn
+
+  draft-release:
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: deployment-${{ needs.build.outputs.version }}
+          path: .artifacts/deployment
+      - name: Create reviewable draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.build.outputs.version }}
+        run: ./hack/draft-release.sh "$RELEASE_VERSION" .artifacts/deployment
