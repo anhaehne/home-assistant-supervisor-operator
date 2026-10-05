@@ -14,6 +14,8 @@ P1 implements [Core lifecycle and operator foundations](docs/p1-foundation.md): 
 
 See [the Kubernetes manager handover](docs/kubernetes-manager-handover.md) for provisioning the isolated development runner. Make and a standalone Python installation are not development prerequisites.
 
+[P2 practical add-on management](docs/p2-addon-management.md) has started with internal manifest capability screening. Catalog and add-on lifecycle implementation and acceptance remain pending.
+
 See [development commands and current verification](docs/development.md) and [the initial contract baseline](docs/contract-baseline.md).
 
 ```sh

@@ -34,6 +34,7 @@ Core runs its released image and native entrypoint, loading its built-in `hassio
 | `src/SupervisorOperator` | API controllers, credential/error middleware, read models, option persistence and Core metrics |
 | `src/SupervisorOperator/Foundation` | Opt-in namespace-scoped KubeOps probe, durable acceptance status and owned projection cleanup |
 | `src/SupervisorOperator/Lifecycle` | Instance/operation entities, lifecycle acceptance, reconciliation, health, fencing and shutdown |
+| `src/SupervisorOperator/Addons` | Preliminary internal manifest capability screening; catalog and runtime integration remain pending |
 | `charts/home-assistant-supervisor-operator` | P1 chart, structural CRDs, RBAC, singleton admission and retained storage |
 | `src/CoreGateway` | Authenticated, narrowly scoped access to Core's private socket |
 | `src/SharedRuntime` | Shared measured cgroup and network-counter helpers |

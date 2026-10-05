@@ -1,6 +1,6 @@
 # Home Assistant Supervisor operator: research and implementation plan
 
-Research date: 2026-10-02. Implementation update: 2026-10-03. P0 is complete: the stock Core compatibility spike, development image, fresh full suite and success/failure teardown gates passed in isolated kind. HTTP endpoints use ASP.NET Core MVC controllers. P1 framework probe work has started; production Kubernetes reconciliation and later milestone features remain planned.
+Research date: 2026-10-02. Implementation update: 2026-10-04. P0 stock Core compatibility and P1 operator/Core lifecycle are complete for the tested development preview. HTTP endpoints use ASP.NET Core MVC controllers. Milestone 2 add-on management has started with internal capability screening; add-on installation and later milestone features remain planned.
 
 ## Objective and recommendation
 
@@ -288,6 +288,8 @@ Extend the completed P0 isolated test harness, MVC API, socket gateway and singl
 Gate: install from a clean cluster; restart Core from the UI; stop/start through the API; delete a Pod and recover; restart operator mid-operation; retain config on uninstall; API remains reachable when Core is stopped. Reject a second instance configuration or operator installation; verify Core never overlaps during updates, restores, and node-partition recovery.
 
 ### Milestone 2 — practical add-on management
+
+Started 2026-10-04. The [P2 work breakdown](p2-addon-management.md) records the first internal manifest capability gate and remaining catalog, schema, runtime, security and native acceptance work. Add-on availability and lifecycle are not implemented yet.
 
 Implement repository refresh, catalog/assets/schema validation, availability, prebuilt image install/update, runtime rendering, lifecycle, options, protected mode, tokens, roles, and service registration. Test upstream **Mosquitto** as the first application, then **File editor** for shared config writes. Selected image versions must pass capability checks; names alone do not establish support. Their manifests exercise [MQTT authentication/services](https://github.com/home-assistant/addons/blob/master/mosquitto/config.yaml) and [shared configuration access](https://github.com/home-assistant/addons/blob/master/configurator/config.yaml).
 
